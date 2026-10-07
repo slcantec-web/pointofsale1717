@@ -18,16 +18,16 @@
       <p class="nav-subtitle">Super admin</p>
       <span class="nav-pill zero" id="pending-count">— pending</span>
       <div class="nav-tabs">
-        <a class="nav-tab-btn" href="#section-pending">Awaiting review</a>
-        <a class="nav-tab-btn" href="#section-shops">All shops</a>
+        <button type="button" class="nav-tab-btn tab-btn active" data-tab="pending" data-title="Awaiting review" data-sub="Shops waiting for approval">Awaiting review</button>
+        <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">All shops</button>
       </div>
       <div class="nav-foot">POS · admin console</div>
     </nav>
 
     <header class="app-header">
       <div class="app-header-title">
-        <h2>Shop directory</h2>
-        <p>Approvals, access and data management</p>
+        <h2 id="header-title">Awaiting review</h2>
+        <p id="header-sub">Shops waiting for approval</p>
       </div>
       <div class="header-actions">
         <button class="btn-sm btn-ghost" id="backup-btn">BACKUP</button>
@@ -53,15 +53,13 @@
       </form>
     </div>
 
-    <section class="dash-section" id="section-pending">
-      <h2 class="section-title">Awaiting review</h2>
+    <section class="tab-panel active" id="tab-pending">
       <div id="pending-list" class="card-stack">
         <p class="loading-line">Loading…</p>
       </div>
     </section>
 
-    <section class="dash-section" id="section-shops">
-      <h2 class="section-title">All shops</h2>
+    <section class="tab-panel" id="tab-shops">
       <div class="ledger" id="ledger">
         <div class="ledger-row ledger-head">
           <span>Shop</span><span>Status</span><span>Mode</span><span>Since</span><span>Actions</span>
@@ -89,6 +87,20 @@
       Auth.clear();
       window.location.href = "/index.html";
     });
+
+    // ---------- tabs (same pattern as dashboard — works on web + APK) ----------
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+    function switchTab(name) {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+      const activeBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+      if (activeBtn) {
+        document.getElementById("header-title").textContent = activeBtn.dataset.title || activeBtn.textContent;
+        document.getElementById("header-sub").textContent = activeBtn.dataset.sub || "";
+      }
+    }
 
     const backupBtn = document.getElementById("backup-btn");
     const restoreBtn = document.getElementById("restore-btn");
