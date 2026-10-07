@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS — Sign up your shop</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#E7EBF1">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-hero">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>New shop</h1>
+      <p class="auth-hero-tag">Set up billing in about a minute. We review new shops before they go live, so login won't work until you're approved.</p>
+      <ul class="auth-hero-points">
+        <li>Choose billing-only or full stock tracking</li>
+        <li>Your own receipt footer, tax rate &amp; paper width</li>
+        <li>Approval usually same day</li>
+      </ul>
+    </div>
+    <div class="auth-main">
+  <div class="receipt">
+    <div class="receipt-head">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>NEW SHOP</h1>
+      <p>takes about a minute</p>
+    </div>
+
+    <hr class="rule">
+
+    <div id="status" class="status"></div>
+
+    <form id="signup-form">
+      <div class="field">
+        <label for="name">SHOP NAME</label>
+        <input type="text" id="name" name="name" placeholder="e.g. Binaara Foods" required>
+      </div>
+      <div class="field">
+        <label for="email">EMAIL</label>
+        <input type="email" id="email" name="email" placeholder="you@yourshop.com" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="contact">CONTACT NUMBER</label>
+        <input type="tel" id="contact" name="contact" placeholder="07X XXX XXXX">
+      </div>
+      <div class="field">
+        <label for="address">ADDRESS</label>
+        <input type="text" id="address" name="address" placeholder="shown on printed bills">
+      </div>
+      <div class="field">
+        <label for="password">PASSWORD</label>
+        <input type="password" id="password" name="password" placeholder="at least 8 characters" required minlength="8" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="password2">CONFIRM PASSWORD</label>
+        <input type="password" id="password2" name="password2" placeholder="type it again" required minlength="8" autocomplete="new-password">
+      </div>
+
+      <div class="field">
+        <label>DO YOU TRACK STOCK?</label>
+        <div class="toggle-row">
+          <button type="button" class="btn" id="inv-yes" data-selected="true">TRACK STOCK</button>
+          <button type="button" class="btn" id="inv-no">BILLING ONLY</button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn" id="submit-btn">SUBMIT FOR REVIEW</button>
+    </form>
+
+    <hr class="rule">
+
+    <p class="foot-line">
+      Already signed up? <a href="/index.html" class="btn-link">Log in</a>
+    </p>
+  </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    const form = document.getElementById("signup-form");
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("submit-btn");
+    const invYes = document.getElementById("inv-yes");
+    const invNo = document.getElementById("inv-no");
+    let tracksInventory = true;
+
+    function setInvMode(tracks) {
+      tracksInventory = tracks;
+      invYes.style.opacity = tracks ? 1 : 0.45;
+      invNo.style.opacity = tracks ? 0.45 : 1;
+    }
+    setInvMode(true);
+    invYes.addEventListener("click", () => setInvMode(true));
+    invNo.addEventListener("click", () => setInvMode(false));
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const password = document.getElementById("password").value;
+      const password2 = document.getElementById("password2").value;
+      if (password !== password2) {
+        showStatus(statusEl, "Passwords don't match.", "err");
+        return;
+      }
+      if (password.length < 8) {
+        showStatus(statusEl, "Password must be at least 8 characters.", "err");
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "SUBMITTING...";
+      try {
+        await apiFetch("/api/shops/signup", {
+          method: "POST",
+          body: JSON.stringify({
+            name: document.getElementById("name").value.trim(),
+            email: document.getElementById("email").value.trim(),
+            password,
+            contact_number: document.getElementById("contact").value.trim(),
+            address: document.getElementById("address").value.trim(),
+            tracks_inventory: tracksInventory,
+          }),
+        });
+        showStatus(statusEl, "Submitted. You'll get an email once it's approved.", "ok");
+        form.reset();
+        setInvMode(true);
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "SUBMIT FOR REVIEW";
+      }
+    });
+  </script>
+</body>
+</html>

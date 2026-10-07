@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS — Logging in</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#E7EBF1">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-hero">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>POS</h1>
+      <p class="auth-hero-tag">One moment.</p>
+    </div>
+    <div class="auth-main">
+  <div class="receipt">
+    <div class="receipt-head">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>POS</h1>
+      <p id="msg">Logging you in…</p>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    // handleVerifyLink redirects here as:
+    //   /auth/callback.html#token=...&role=...&shopId=...
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const token = params.get("token");
+    const role = params.get("role");
+    const shopId = params.get("shopId");
+    const msg = document.getElementById("msg");
+
+    if (!token) {
+      msg.textContent = "Login link missing or expired. Please request a new one.";
+      setTimeout(() => (window.location.href = "/index.html"), 2000);
+    } else {
+      Auth.set({ token, role, shopId });
+      // Strip the token out of the URL bar before moving on
+      history.replaceState(null, "", window.location.pathname);
+      window.location.href = role === "super_admin" ? "/admin.html" : "/dashboard.html";
+    }
+  </script>
+</body>
+</html>

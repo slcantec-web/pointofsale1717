@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS — Log in</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#E7EBF1">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-hero">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>POS</h1>
+      <p class="auth-hero-tag">Billing and inventory built for a small shop's actual shift — fast checkout, per-item stock, and receipts that print in seconds.</p>
+      <ul class="auth-hero-points">
+        <li>Print-ready receipts, 58mm or 80mm paper</li>
+        <li>Per-item stock, cost &amp; discount tracking</li>
+        <li>One login, thirty days — no re-typing mid-shift</li>
+      </ul>
+    </div>
+    <div class="auth-main">
+  <div class="receipt">
+    <div class="receipt-head">
+      <div class="mark">✦ ✦ ✦</div>
+      <h1>LOG IN</h1>
+      <p>welcome back</p>
+    </div>
+
+    <hr class="rule">
+
+    <div id="status" class="status"></div>
+
+    <form id="password-form">
+      <div class="field">
+        <label for="p-email">EMAIL</label>
+        <input type="email" id="p-email" name="email" placeholder="you@yourshop.com" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="p-password">PASSWORD</label>
+        <input type="password" id="p-password" name="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn" id="password-submit-btn">LOG IN</button>
+      <p class="foot-line" style="margin-top:10px;"><a href="/forgot-password.html" class="btn-link">Forgot password?</a></p>
+    </form>
+
+    <hr class="rule">
+
+    <p class="foot-line">
+      New shop? <a href="/signup.html" class="btn-link">Sign up here</a>
+    </p>
+  </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    const statusEl = document.getElementById("status");
+
+    const passwordForm = document.getElementById("password-form");
+    const passwordBtn = document.getElementById("password-submit-btn");
+
+    function goToRoleHome(role) {
+      window.location.href = role === "super_admin" ? "/admin.html" : "/dashboard.html";
+    }
+
+    passwordForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("p-email").value.trim();
+      const password = document.getElementById("p-password").value;
+      passwordBtn.disabled = true;
+      passwordBtn.textContent = "LOGGING IN...";
+      try {
+        const data = await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        Auth.set({ token: data.token, role: data.role, shopId: data.shopId });
+        goToRoleHome(data.role);
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+        passwordBtn.disabled = false;
+        passwordBtn.textContent = "LOG IN";
+      }
+    });
+  </script>
+</body>
+</html>

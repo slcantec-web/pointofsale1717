@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS — Admin</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#E7EBF1">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="app-nav">
+      <div class="nav-brand">
+        <span class="mark">✦ ✦ ✦</span>
+        <h1>POS</h1>
+      </div>
+      <p class="nav-subtitle">Super admin</p>
+      <span class="nav-pill zero" id="pending-count">— pending</span>
+      <div class="nav-tabs">
+        <a class="nav-tab-btn" href="#section-pending">AWAITING REVIEW</a>
+        <a class="nav-tab-btn" href="#section-shops">ALL SHOPS</a>
+      </div>
+      <div class="nav-foot">POS · admin console</div>
+    </nav>
+
+    <header class="app-header">
+      <div class="app-header-title">
+        <h2>Shop directory</h2>
+        <p>Approvals, access and data management</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-sm btn-ghost" id="backup-btn">BACKUP</button>
+        <button class="btn-sm btn-ghost" id="restore-btn">RESTORE</button>
+        <input type="file" id="restore-file" accept="application/json" style="display:none;">
+        <button class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
+        <button class="btn-sm btn-ghost" id="logout-btn">LOG OUT</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+    <div id="status" class="status"></div>
+
+    <div id="password-panel" class="shop-card" style="display:none; flex-direction:column; align-items:stretch; gap:10px;">
+      <p class="shop-card-name" style="margin:0;">Set a password</p>
+      <p class="shop-card-meta">Skip the email link next time — log in with this email + password on the login page.</p>
+      <form id="password-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
+          <label for="new-password">NEW PASSWORD</label>
+          <input type="password" id="new-password" minlength="8" required autocomplete="new-password" placeholder="at least 8 characters">
+        </div>
+        <button type="submit" class="btn-sm btn-approve" id="password-save-btn">SAVE</button>
+      </form>
+    </div>
+
+    <section class="dash-section" id="section-pending">
+      <h2 class="section-title">Awaiting review</h2>
+      <div id="pending-list" class="card-stack">
+        <p class="loading-line">Loading…</p>
+      </div>
+    </section>
+
+    <section class="dash-section" id="section-shops">
+      <h2 class="section-title">All shops</h2>
+      <div class="ledger" id="ledger">
+        <div class="ledger-row ledger-head">
+          <span>Shop</span><span>Status</span><span>Mode</span><span>Since</span><span>Actions</span>
+        </div>
+      </div>
+      <p class="loading-line" id="ledger-loading">Loading…</p>
+    </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    // Guard: super admin only
+    if (!Auth.isLoggedIn() || Auth.role !== "super_admin") {
+      window.location.href = "/index.html";
+    }
+
+    const statusEl = document.getElementById("status");
+    const pendingCountEl = document.getElementById("pending-count");
+    const pendingListEl = document.getElementById("pending-list");
+    const ledgerEl = document.getElementById("ledger");
+    const ledgerLoadingEl = document.getElementById("ledger-loading");
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      Auth.clear();
+      window.location.href = "/index.html";
+    });
+
+    const backupBtn = document.getElementById("backup-btn");
+    const restoreBtn = document.getElementById("restore-btn");
+    const restoreFile = document.getElementById("restore-file");
+
+    backupBtn.addEventListener("click", async () => {
+      backupBtn.disabled = true;
+      backupBtn.textContent = "BACKING UP...";
+      try {
+        const data = await apiFetch("/api/admin/backup");
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        a.href = url;
+        a.download = `pos-backup-${stamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showStatus(statusEl, "Backup downloaded.", "ok");
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      } finally {
+        backupBtn.disabled = false;
+        backupBtn.textContent = "BACKUP";
+      }
+    });
+
+    restoreBtn.addEventListener("click", () => restoreFile.click());
+
+    restoreFile.addEventListener("change", async () => {
+      const file = restoreFile.files[0];
+      restoreFile.value = "";
+      if (!file) return;
+      if (!confirm(`This REPLACES ALL current data (shops, users, products, sales) with the contents of "${file.name}". This cannot be undone. Continue?`)) return;
+
+      restoreBtn.disabled = true;
+      restoreBtn.textContent = "RESTORING...";
+      try {
+        const text = await file.text();
+        const backup = JSON.parse(text);
+        const result = await apiFetch("/api/admin/restore", {
+          method: "POST",
+          body: JSON.stringify(backup),
+        });
+        showStatus(statusEl, `Restored ${result.restored.shops} shop(s), ${result.restored.users} user(s), ${result.restored.products} product(s), ${result.restored.item_groups ?? 0} categor(ies), ${result.restored.documents} document(s).`, "ok");
+        loadShops();
+      } catch (e) {
+        showStatus(statusEl, e.message.includes("JSON") ? "That file doesn't look like a valid backup." : e.message, "err");
+      } finally {
+        restoreBtn.disabled = false;
+        restoreBtn.textContent = "RESTORE";
+      }
+    });
+
+    const passwordPanel = document.getElementById("password-panel");
+    const passwordToggleBtn = document.getElementById("password-toggle-btn");
+    const passwordForm = document.getElementById("password-form");
+    const passwordSaveBtn = document.getElementById("password-save-btn");
+
+    passwordToggleBtn.addEventListener("click", () => {
+      passwordPanel.style.display = passwordPanel.style.display === "none" ? "flex" : "none";
+    });
+
+    passwordForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const password = document.getElementById("new-password").value;
+      passwordSaveBtn.disabled = true;
+      passwordSaveBtn.textContent = "SAVING...";
+      try {
+        await apiFetch("/api/auth/set-password", {
+          method: "POST",
+          body: JSON.stringify({ password }),
+        });
+        showStatus(statusEl, "Password saved. Use it on the login page any time.", "ok");
+        passwordForm.reset();
+        passwordPanel.style.display = "none";
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      } finally {
+        passwordSaveBtn.disabled = false;
+        passwordSaveBtn.textContent = "SAVE";
+      }
+    });
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso.replace(" ", "T") + "Z");
+      if (isNaN(d)) return iso;
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
+
+    function shopCard(shop) {
+      const wrap = document.createElement("div");
+      wrap.className = "shop-card";
+      wrap.dataset.shopId = shop.id;
+
+      const meta = [
+        shop.address ? escapeHtml(shop.address) : null,
+        shop.contact_number ? escapeHtml(shop.contact_number) : null,
+        shop.tracks_inventory ? "tracks stock" : "billing only",
+        "applied " + fmtDate(shop.created_at),
+      ].filter(Boolean).join('<span class="sep">·</span>');
+
+      wrap.innerHTML = `
+        <div>
+          <p class="shop-card-name">${escapeHtml(shop.name)}</p>
+          <p class="shop-card-meta">${meta}</p>
+        </div>
+        <div class="shop-card-actions">
+          <button class="btn-sm btn-approve" data-action="approve">APPROVE</button>
+          <button class="btn-sm btn-reject" data-action="reject">REJECT</button>
+        </div>
+      `;
+
+      wrap.querySelector('[data-action="approve"]').addEventListener("click", (e) => act(shop, "approve", e.target));
+      wrap.querySelector('[data-action="reject"]').addEventListener("click", (e) => act(shop, "reject", e.target));
+
+      return wrap;
+    }
+
+    async function act(shop, action, btn) {
+      if (action === "reject" && !confirm(`Reject ${shop.name}? They won't be able to log in.`)) return;
+      const card = btn.closest(".shop-card");
+      card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      btn.textContent = action === "approve" ? "APPROVING…" : "REJECTING…";
+      try {
+        await apiFetch(`/api/admin/shops/${shop.id}/${action}`, { method: "POST" });
+        showStatus(statusEl, `${shop.name} ${action === "approve" ? "approved — they can now log in with their email and password." : "rejected."}`, action === "approve" ? "ok" : "err");
+        loadShops();
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+        card.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        btn.textContent = action === "approve" ? "APPROVE" : "REJECT";
+      }
+    }
+
+    async function shopAction(shop, action, btn, { confirmMsg, method = "POST" } = {}) {
+      if (confirmMsg && !confirm(confirmMsg)) return;
+      const row = btn.closest(".ledger-row");
+      row.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      const originalText = btn.textContent;
+      btn.textContent = "…";
+      try {
+        const path = action === "delete" ? `/api/admin/shops/${shop.id}` : `/api/admin/shops/${shop.id}/${action}`;
+        await apiFetch(path, { method });
+        const messages = {
+          "reset-password": `Reset link sent to ${shop.name}.`,
+          disable: `${shop.name} disabled.`,
+          enable: `${shop.name} enabled.`,
+          delete: `${shop.name} deleted.`,
+        };
+        showStatus(statusEl, messages[action] || "Done.", action === "delete" || action === "disable" ? "err" : "ok");
+        loadShops();
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+        row.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        btn.textContent = originalText;
+      }
+    }
+
+    function escapeHtml(str) {
+      const d = document.createElement("div");
+      d.textContent = str || "";
+      return d.innerHTML;
+    }
+
+    async function loadShops() {
+      try {
+        const shops = await apiFetch("/api/admin/shops");
+        const pending = shops.filter((s) => s.status === "pending");
+
+        pendingCountEl.textContent = pending.length ? `${pending.length} PENDING` : "0 PENDING";
+        pendingCountEl.classList.toggle("zero", pending.length === 0);
+
+        pendingListEl.innerHTML = "";
+        if (!pending.length) {
+          pendingListEl.innerHTML = '<p class="empty-line">Nothing waiting on review.</p>';
+        } else {
+          pending.forEach((s) => pendingListEl.appendChild(shopCard(s)));
+        }
+
+        ledgerLoadingEl.style.display = "none";
+        ledgerEl.querySelectorAll(".ledger-row:not(.ledger-head)").forEach((r) => r.remove());
+        if (!shops.length) {
+          ledgerLoadingEl.textContent = "No shops yet.";
+          ledgerLoadingEl.style.display = "block";
+        } else {
+          shops.forEach((s) => {
+            const row = document.createElement("div");
+            row.className = "ledger-row";
+            row.innerHTML = `
+              <span>${escapeHtml(s.name)}</span>
+              <span class="stamp ${s.status}${s.active ? "" : " rejected"}">${s.active ? s.status.toUpperCase() : "DISABLED"}</span>
+              <span>${s.tracks_inventory ? "Stock" : "Billing"}</span>
+              <span>${fmtDate(s.created_at)}</span>
+              <span class="ledger-actions">
+                <button class="btn-sm btn-ghost" data-action="reset-password">RESET PW</button>
+                <button class="btn-sm btn-ghost" data-action="${s.active ? "disable" : "enable"}">${s.active ? "DISABLE" : "ENABLE"}</button>
+                <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
+              </span>
+            `;
+            row.querySelector('[data-action="reset-password"]').addEventListener("click", (e) => shopAction(s, "reset-password", e.target, { confirmMsg: `Email a password reset link to ${s.name}'s account?` }));
+            row.querySelector('[data-action="disable"], [data-action="enable"]')?.addEventListener("click", (e) => {
+              const actionName = e.target.dataset.action;
+              shopAction(s, actionName, e.target, actionName === "disable" ? { confirmMsg: `Disable ${s.name}? They won't be able to log in until re-enabled.` } : {});
+            });
+            row.querySelector('[data-action="delete"]').addEventListener("click", (e) =>
+              shopAction(s, "delete", e.target, {
+                confirmMsg: `Permanently delete ${s.name}? This removes their account, products, and all sales history, and frees up their email to sign up again. This cannot be undone — consider taking a backup first.`,
+                method: "DELETE",
+              })
+            );
+            ledgerEl.appendChild(row);
+          });
+        }
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+        if (e.message === "unauthorized") {
+          Auth.clear();
+          setTimeout(() => (window.location.href = "/index.html"), 1200);
+        }
+      }
+    }
+
+    loadShops();
+  </script>
+</body>
+</html>
