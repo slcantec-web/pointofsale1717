@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>POS — Admin</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#E7EBF1">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -18,8 +18,8 @@
       <p class="nav-subtitle">Super admin</p>
       <span class="nav-pill zero" id="pending-count">— pending</span>
       <div class="nav-tabs">
-        <a class="nav-tab-btn" href="#section-pending">AWAITING REVIEW</a>
-        <a class="nav-tab-btn" href="#section-shops">ALL SHOPS</a>
+        <a class="nav-tab-btn" href="#section-pending">Awaiting review</a>
+        <a class="nav-tab-btn" href="#section-shops">All shops</a>
       </div>
       <div class="nav-foot">POS · admin console</div>
     </nav>
@@ -287,7 +287,7 @@
               <span>${s.tracks_inventory ? "Stock" : "Billing"}</span>
               <span>${fmtDate(s.created_at)}</span>
               <span class="ledger-actions">
-                <button class="btn-sm btn-ghost" data-action="reset-password">RESET PW</button>
+                <button class="btn-sm btn-ghost" data-action="reset-password">Reset password</button>
                 <button class="btn-sm btn-ghost" data-action="${s.active ? "disable" : "enable"}">${s.active ? "DISABLE" : "ENABLE"}</button>
                 <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
               </span>

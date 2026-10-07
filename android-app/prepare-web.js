@@ -16,5 +16,5 @@ for (const f of fs.readdirSync(root)) {
     fs.copyFileSync(full, path.join(out, f));
   }
 }
-fs.cpSync(path.join(root, "icons"), path.join(out, "icons"), { recursive: true });
+for (const d of ["icons", "fonts"]) fs.cpSync(path.join(root, d), path.join(out, d), { recursive: true });
 console.log("www/ ready:", fs.readdirSync(out).join(", "));

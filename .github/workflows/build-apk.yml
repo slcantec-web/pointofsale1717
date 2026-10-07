@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["*.html", "*.css", "app.js", "offline.js", "manifest.json", "icons/**", "android-app/**"]
+    paths: ["*.html", "*.css", "app.js", "offline.js", "manifest.json", "icons/**", "fonts/**", "android-app/**"]
 
 jobs:
   apk:

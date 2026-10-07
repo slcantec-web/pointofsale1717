@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>POS — Dashboard</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#E7EBF1">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -18,11 +18,11 @@
       <p class="nav-subtitle">Shop dashboard</p>
       <span class="nav-pill zero" id="low-stock-pill" style="display:none;"></span>
       <div class="nav-tabs">
-        <button class="nav-tab-btn tab-btn active" data-tab="bill" data-title="Bill" data-sub="Ring up a sale">BILL</button>
-        <button class="nav-tab-btn tab-btn" data-tab="products" data-title="Products" data-sub="Manage stock and pricing">PRODUCTS</button>
-        <button class="nav-tab-btn tab-btn" data-tab="history" data-title="History" data-sub="Past sales, voids and edits">HISTORY</button>
-        <button class="nav-tab-btn tab-btn" data-tab="reports" data-title="Reports" data-sub="Revenue, GP and stock levels">REPORTS</button>
-        <button class="nav-tab-btn tab-btn" data-tab="settings" data-title="Settings" data-sub="Shop details and receipt setup">SETTINGS</button>
+        <button class="nav-tab-btn tab-btn active" data-tab="bill" data-title="Bill" data-sub="Ring up a sale">Bill</button>
+        <button class="nav-tab-btn tab-btn" data-tab="products" data-title="Products" data-sub="Manage stock and pricing">Products</button>
+        <button class="nav-tab-btn tab-btn" data-tab="history" data-title="History" data-sub="Past sales, voids and edits">History</button>
+        <button class="nav-tab-btn tab-btn" data-tab="reports" data-title="Reports" data-sub="Revenue, profit and stock levels">Reports</button>
+        <button class="nav-tab-btn tab-btn" data-tab="settings" data-title="Settings" data-sub="Shop details and receipt setup">Settings</button>
       </div>
       <div class="nav-foot">POS · shop till</div>
     </nav>
@@ -178,7 +178,7 @@
       <p class="section-title">Top items</p>
       <div class="mini-table-wrap">
         <table class="mini-table">
-          <thead><tr><th>Item</th><th>Qty sold</th><th>Revenue</th><th>GP</th></tr></thead>
+          <thead><tr><th>Item</th><th>Qty sold</th><th>Revenue</th><th class="keep-case">GP</th></tr></thead>
           <tbody id="top-items-body"></tbody>
         </table>
       </div>
@@ -200,7 +200,7 @@
       <p class="shop-card-meta" style="margin-bottom:10px;">Uses the same FROM/TO date range as above. Every sale line is listed separately, with its own cost and GP — voided lines show in rust and net themselves out.</p>
       <div class="mini-table-wrap">
         <table class="mini-table">
-          <thead><tr><th>Date</th><th>Doc #</th><th>Item</th><th>Group</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Sale amt</th><th>Cost</th><th>GP</th></tr></thead>
+          <thead><tr><th>Date</th><th>Doc #</th><th>Item</th><th>Group</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Sale amt</th><th>Cost</th><th class="keep-case">GP</th></tr></thead>
           <tbody id="tx-body"><tr><td colspan="10" class="loading-line">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -399,12 +399,11 @@
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "pick-item" + (outOfStock ? " out-of-stock" : "");
-        const discSuffix = p.discount_pct ? ` · ${p.discount_pct}% off` : "";
-        const groupSuffix = p.item_group ? ` · ${escapeHtml(p.item_group)}` : "";
-        const meta = shop.tracks_inventory && p.stock_qty !== null
-          ? `#${escapeHtml(p.item_code)} · ${fmtMoney(p.unit_price)} · ${p.stock_qty} in stock${discSuffix}${groupSuffix}`
-          : `#${escapeHtml(p.item_code)} · ${fmtMoney(p.unit_price)}${discSuffix}${groupSuffix}`;
-        btn.innerHTML = `<span><span class="pick-item-name">${escapeHtml(p.name)}</span><br><span class="pick-item-meta">${meta}</span></span>`;
+        const bits = [`#${escapeHtml(p.item_code)}`];
+        if (shop.tracks_inventory && p.stock_qty !== null) bits.push(`${p.stock_qty} in stock`);
+        if (p.discount_pct) bits.push(`${p.discount_pct}% off`);
+        if (p.item_group) bits.push(escapeHtml(p.item_group));
+        btn.innerHTML = `<span class="pick-item-name">${escapeHtml(p.name)}</span><span class="pick-item-price">${fmtMoney(p.unit_price)}</span><span class="pick-item-meta">${bits.join(" · ")}</span>`;
         btn.addEventListener("click", () => { if (!outOfStock) addToCart(p); });
         listEl.appendChild(btn);
       });
@@ -1263,7 +1262,7 @@
         <div class="summary-card"><div class="summary-card-label">Discounts</div><div class="summary-card-value">${fmtMoney(data.discounts)}</div></div>
         <div class="summary-card"><div class="summary-card-label">Sales</div><div class="summary-card-value">${data.doc_count}</div></div>
         <div class="summary-card"><div class="summary-card-label">Gross profit</div><div class="summary-card-value">${fmtMoney(data.gross_profit)}</div></div>
-        <div class="summary-card"><div class="summary-card-label">GP margin</div><div class="summary-card-value">${data.gp_margin_pct.toFixed(1)}%</div></div>
+        <div class="summary-card"><div class="summary-card-label">Gross margin</div><div class="summary-card-value">${data.gp_margin_pct.toFixed(1)}%</div></div>
       `;
       const topBody = document.getElementById("top-items-body");
       topBody.innerHTML = data.top_items.length
