@@ -34,7 +34,6 @@
       </div>
       <div class="header-actions">
         <span class="nav-pill urgent" id="offline-badge" style="display:none; margin:0;"></span>
-        <button type="button" class="btn-sm btn-ghost" id="sync-btn">SYNC</button>
       </div>
     </header>
 
@@ -130,13 +129,13 @@
           <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Add product</p>
         </div>
         <form id="add-product-form" class="product-row-edit add-product-form">
-          <div class="field field-full"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
+          <div class="field"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
           <div class="field"><label for="np-price">PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
           <div class="field"><label for="np-cost">COST</label><input type="number" id="np-cost" step="0.01" min="0"></div>
           <div class="field" id="np-stock-field"><label for="np-stock">STOCK</label><input type="number" id="np-stock" step="0.01" min="0"></div>
           <div class="field" id="np-minqty-field"><label for="np-minqty">MIN QTY</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
           <div class="field"><label for="np-discount">DISC %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
-          <div class="field field-full"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
+          <div class="field"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
           <button type="submit" class="btn-sm btn-approve">ADD PRODUCT</button>
         </form>
         <p class="shop-card-meta help-desktop">Item codes are assigned automatically. Default discount % auto-fills on the bill; change per sale if needed.</p>
@@ -423,7 +422,6 @@
       const listEl = document.getElementById("pick-list");
       const q = (filter || "").trim().toLowerCase();
       const shown = products.filter((p) => {
-        if (!p.active) return false;
         if (selectedGroup && (p.item_group || "") !== selectedGroup) return false;
         if (!q) return true;
         return p.name.toLowerCase().includes(q) || (p.item_code || "").includes(q) || (p.item_group || "").toLowerCase().includes(q);
@@ -1008,7 +1006,7 @@
     function updateLowStockPill() {
       const pill = document.getElementById("low-stock-pill");
       if (!shop || !shop.tracks_inventory) { pill.style.display = "none"; return; }
-      const low = products.filter((p) => p.active && p.stock_qty !== null && p.stock_qty <= (p.low_stock_threshold ?? 5));
+      const low = products.filter((p) => p.stock_qty !== null && p.stock_qty <= (p.low_stock_threshold ?? 5));
       if (low.length) {
         pill.textContent = `${low.length} LOW STOCK`;
         pill.classList.remove("zero");
@@ -1068,20 +1066,18 @@
           : `code #${escapeHtml(p.item_code)}<span class="sep">·</span>price ${fmtMoney(p.unit_price)}<span class="sep">·</span>cost ${fmtMoney(p.cost_price)}${discBit}${groupBit}`;
         row.innerHTML = `
           <div>
-            <p class="shop-card-name" style="margin:0;">${escapeHtml(p.name)} ${p.active ? "" : '<span class="stamp rejected">INACTIVE</span>'}</p>
+            <p class="shop-card-name" style="margin:0;">${escapeHtml(p.name)}</p>
             <p class="shop-card-meta">${meta}</p>
           </div>
           <div class="product-row-actions">
             <button class="btn-sm btn-ghost" data-action="edit">EDIT</button>
             ${shop.tracks_inventory ? '<button class="btn-sm btn-ghost" data-action="stockin">STOCK IN</button>' : ""}
             <button class="btn-sm ${p.active ? "btn-reject" : "btn-approve"}" data-action="toggle">${p.active ? "DEACTIVATE" : "ACTIVATE"}</button>
-            <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
           </div>
         `;
         row.querySelector('[data-action="edit"]').addEventListener("click", () => toggleEditRow(row, p));
         if (shop.tracks_inventory) row.querySelector('[data-action="stockin"]').addEventListener("click", () => toggleStockInRow(row, p));
         row.querySelector('[data-action="toggle"]').addEventListener("click", () => toggleProductActive(p));
-        row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteProduct(p));
         listEl.appendChild(row);
       });
     }
@@ -1092,12 +1088,12 @@
       const form = document.createElement("form");
       form.className = "product-row-edit";
       form.innerHTML = `
-        <div class="field field-full"><label>NAME</label><input type="text" name="name" value="${escapeHtml(p.name)}"></div>
+        <div class="field"><label>NAME</label><input type="text" name="name" value="${escapeHtml(p.name)}"></div>
         <div class="field"><label>PRICE</label><input type="number" name="unit_price" step="0.01" value="${p.unit_price}"></div>
         <div class="field"><label>COST</label><input type="number" name="cost_price" step="0.01" value="${p.cost_price}"></div>
         ${shop.tracks_inventory ? `<div class="field"><label>MIN QTY</label><input type="number" name="low_stock_threshold" step="1" min="0" value="${p.low_stock_threshold ?? 5}"></div>` : ""}
         <div class="field" style="flex:1 1 150px;"><label>DEFAULT DISCOUNT %</label><input type="number" name="discount_pct" step="0.01" min="0" max="100" value="${p.discount_pct || 0}"></div>
-        <div class="field field-full"><label>CATEGORY</label><select name="item_group">${groupOptionsHtml(p.item_group || "")}</select></div>
+        <div class="field" style="flex:1 1 160px;"><label>CATEGORY</label><select name="item_group">${groupOptionsHtml(p.item_group || "")}</select></div>
         <button type="submit" class="btn-sm btn-approve">SAVE</button>
       `;
       form.addEventListener("submit", async (e) => {
@@ -1188,7 +1184,7 @@
       row.className = "stock-in-row";
       row.dataset.rowId = id;
       row.innerHTML = `
-        <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions()}</select></div>
+        <div class="field" style="flex:2 1 200px;"><label>PRODUCT</label><select name="product_id">${productOptions()}</select></div>
         <div class="field"><label>QTY RECEIVED</label><input type="number" name="qty" step="0.01" min="0" required></div>
         <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" required></div>
         <button type="button" class="btn-sm btn-reject" data-action="remove-row">✕</button>
@@ -1268,65 +1264,6 @@
         showStatus(statusEl, err.message, "err");
       }
     }
-
-    async function deleteProduct(p) {
-      if (shop.tracks_inventory && (parseFloat(p.stock_qty) || 0) > 0) {
-        showStatus(statusEl, `Can't delete "${p.name}" — ${p.stock_qty} still in stock. Deactivate it instead.`, "err");
-        return;
-      }
-      if (!confirm(`Delete "${p.name}" permanently? Past sales keep their lines. To just hide it, use Deactivate.`)) return;
-      try {
-        const res = await apiWriteOrQueue({
-          path: `/api/products/${p.id}`, method: "DELETE", body: {}, label: "Product delete",
-          onOffline: async () => {
-            products = products.filter((x) => x.id !== p.id);
-            await cachePut("/api/products", products);
-          },
-        });
-        showStatus(statusEl, res && res.offline ? "Product deleted (offline)." : "Product deleted.", "ok");
-        await loadProducts();
-        renderProducts();
-        renderPickList();
-      } catch (err) {
-        showStatus(statusEl, err.message, "err");
-      }
-    }
-
-    // ---------- manual SYNC (also runs when the OFFLINE / UNSYNCED badge is tapped) ----------
-    async function syncNow() {
-      const btn = document.getElementById("sync-btn");
-      btn.disabled = true; btn.textContent = "SYNCING…";
-      try {
-        if (!navigator.onLine) { showStatus(statusEl, "You're offline — can't sync yet.", "err"); return; }
-        await retryFailedQueue();
-        await flushAll();
-        shop = await cachedGet("/api/shop/settings");
-        await loadItemGroups();
-        await loadProducts();
-        renderPickList(document.getElementById("product-search").value);
-        renderProducts();
-        const active = document.querySelector(".tab-btn.active");
-        if (active && active.dataset.tab === "history") loadHistory();
-        if (active && active.dataset.tab === "reports") { loadReports(); loadTransactions(); }
-        const left = await pendingCount();
-        if (!left.total) {
-          showStatus(statusEl, "Synced — everything is up to date.", "ok");
-        } else {
-          showStatus(statusEl, `${left.total} item(s) still unsynced${left.firstError ? ": " + left.firstError : ""}`, "err");
-          if (left.hasError && confirm("Some saved changes keep failing. Discard the failed changes (not sales)?")) {
-            await discardFailedWrites();
-            showStatus(statusEl, "Failed changes discarded.", "ok");
-          }
-        }
-      } catch (e) {
-        showStatus(statusEl, isNetworkError(e) ? "Still can't reach the server." : e.message, "err");
-      } finally {
-        btn.disabled = false; btn.textContent = "SYNC";
-        updatePendingBadge();
-      }
-    }
-    document.getElementById("sync-btn").addEventListener("click", syncNow);
-    document.getElementById("offline-badge").addEventListener("click", syncNow);
 
     // ================= HISTORY =================
     let historyDocs = []; // last fetched batch, so the search box can filter client-side without refetching
