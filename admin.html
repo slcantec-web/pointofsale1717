@@ -4,6 +4,120 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>POS — Admin</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="stylesheet" href="/style.css">
 </head>
-<body><p>Restoring…</p></body>
+<body>
+  <div class="app-shell">
+    <nav class="app-nav">
+      <div class="nav-brand">
+        <span class="mark">✦ ✦ ✦</span>
+        <h1>POS</h1>
+      </div>
+      <p class="nav-subtitle">Super admin</p>
+      <span class="nav-pill zero" id="pending-count">— pending</span>
+      <div class="nav-tabs">
+        <button type="button" class="nav-tab-btn tab-btn active" data-tab="pending" data-title="Awaiting review" data-sub="Shops waiting for approval">Pending</button>
+        <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">Shops</button>
+      </div>
+      <div class="nav-foot">POS · admin console</div>
+    </nav>
+
+    <header class="app-header">
+      <div class="app-header-title">
+        <h2 id="header-title">Awaiting review</h2>
+        <p id="header-sub">Shops waiting for approval</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-sm btn-ghost" id="backup-btn">BACKUP</button>
+        <button class="btn-sm btn-ghost" id="restore-btn">RESTORE</button>
+        <input type="file" id="restore-file" accept="application/json" style="display:none;">
+        <button class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
+        <button class="btn-sm btn-ghost" id="logout-btn">LOG OUT</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+    <div id="status" class="status"></div>
+
+    <div id="password-panel" class="shop-card" style="display:none; flex-direction:column; align-items:stretch; gap:10px;">
+      <p class="shop-card-name" style="margin:0;">Set a password</p>
+      <p class="shop-card-meta">Skip the email link next time — log in with this email + password on the login page.</p>
+      <form id="password-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
+          <label for="new-password">NEW PASSWORD</label>
+          <input type="password" id="new-password" minlength="8" required autocomplete="new-password" placeholder="at least 8 characters">
+        </div>
+        <button type="submit" class="btn-sm btn-approve" id="password-save-btn">SAVE</button>
+      </form>
+    </div>
+
+    <section class="tab-panel active" id="tab-pending">
+      <div id="pending-list" class="card-stack">
+        <p class="loading-line">Loading…</p>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-shops">
+      <div class="ledger" id="ledger">
+        <div class="ledger-row ledger-head">
+          <span>Shop</span><span>Status</span><span>Mode</span><span>Since</span><span>Actions</span>
+        </div>
+      </div>
+      <p class="loading-line" id="ledger-loading">Loading…</p>
+    </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    // Guard: super admin only
+    if (!Auth.isLoggedIn() || Auth.role !== "super_admin") {
+      goTo("index.html");
+    }
+
+    const statusEl = document.getElementById("status");
+    const pendingCountEl = document.getElementById("pending-count");
+    const pendingListEl = document.getElementById("pending-list");
+    const ledgerEl = document.getElementById("ledger");
+    const ledgerLoadingEl = document.getElementById("ledger-loading");
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      Auth.clear();
+      goTo("index.html");
+    });
+
+    // ---------- tabs (same pattern as dashboard — works on web + APK WebView) ----------
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTab(btn.dataset.tab);
+      });
+    });
+    function switchTab(name) {
+      if (!name) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        const on = p.id === "tab-" + name;
+        p.classList.toggle("active", on);
+        // explicit display helps Android WebView when class toggle alone is flaky
+        p.style.display = on ? "block" : "none";
+      });
+      const activeBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+      if (activeBtn) {
+        document.getElementById("header-title").textContent = activeBtn.dataset.title || activeBtn.textContent;
+        document.getElementById("header-sub").textContent = activeBtn.dataset.sub || "";
+      }
+      const main = document.querySelector(".app-main");
+      if (main) main.scrollTop = 0;
+    }
+    // ensure only the active panel is visible on first paint (APK)
+    switchTab("pending");
+
+    // PLACEHOLDER_REST_OF_ADMIN - will fix next
+    loadShops = async function() {};
+  </script>
+</body>
 </html>
