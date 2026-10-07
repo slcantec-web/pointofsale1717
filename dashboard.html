@@ -34,8 +34,6 @@
       </div>
       <div class="header-actions">
         <span class="nav-pill urgent" id="offline-badge" style="display:none; margin:0;"></span>
-        <button class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
-        <button class="btn-sm btn-ghost" id="logout-btn">LOG OUT</button>
       </div>
     </header>
 
@@ -69,26 +67,28 @@
           <div class="pick-list" id="pick-list"><p class="loading-line">Loading…</p></div>
         </div>
         <div class="cart-box">
-          <p class="section-title" style="padding-top:0; border-top:none; margin-bottom:10px;">Current sale</p>
+          <div class="cart-box-head">
+            <p class="section-title cart-title">Sale</p>
+            <span class="cart-count-pill" id="cart-count-pill" style="display:none;">0</span>
+          </div>
           <div class="cart-list" id="cart-list">
-            <p class="empty-cart">No items yet — tap a product to add it.</p>
+            <p class="empty-cart">Tap a product to add it</p>
           </div>
 
           <div class="custom-item-row">
-            <input type="text" id="ci-name" class="ci-name" placeholder="custom item name">
+            <input type="text" id="ci-name" class="ci-name" placeholder="custom item">
             <input type="number" id="ci-price" class="ci-price" placeholder="price" step="0.01" min="0">
             <input type="number" id="ci-qty" class="ci-qty" placeholder="qty" step="1" min="1" value="1">
             <button type="button" class="btn-sm btn-ghost" id="add-custom-btn">ADD</button>
           </div>
 
-          <div class="totals-box">
+          <div class="totals-box totals-detail">
             <div class="totals-line"><span>Subtotal</span><span id="t-subtotal">0.00</span></div>
             <div class="totals-line"><span>Discount</span><span id="t-discount">0.00</span></div>
             <div class="totals-line" id="t-tax-line" style="display:none;"><span id="t-tax-label">Tax</span><span id="t-tax">0.00</span></div>
-            <div class="totals-line grand"><span>Total</span><span id="t-total">0.00</span></div>
           </div>
-
-          <div class="totals-box" style="margin-top:10px;">
+          <div class="totals-box totals-pay">
+            <div class="totals-line grand"><span>Total</span><span id="t-total">0.00</span></div>
             <div class="totals-line">
               <span>Received</span>
               <span><button type="button" class="received-btn" id="t-received-btn">0.00</button></span>
@@ -99,10 +99,10 @@
           </div>
           <p class="empty-line" id="received-warning" style="display:none; color:var(--rust); padding:4px 0 0;">Received amount can't be less than the total due.</p>
 
-          <button class="btn" id="checkout-btn" style="margin-top:14px;">POST SALE</button>
-          <div id="last-sale-actions" style="display:none; margin-top:10px; text-align:center;">
-            <button class="btn-sm btn-ghost" id="print-last-btn">PRINT LAST RECEIPT</button>
-            <button class="btn-sm btn-reject" id="void-last-btn">VOID LAST SALE</button>
+          <button class="btn" id="checkout-btn">POST SALE</button>
+          <div id="last-sale-actions" style="display:none; margin-top:8px; text-align:center;">
+            <button class="btn-sm btn-ghost" id="print-last-btn">PRINT</button>
+            <button class="btn-sm btn-reject" id="void-last-btn">VOID</button>
           </div>
         </div>
       </div>
@@ -110,44 +110,55 @@
 
     <!-- PRODUCTS -->
     <section class="tab-panel" id="tab-products">
-      <p class="section-title" style="padding-top:0; border-top:none;">Categories</p>
-      <form id="add-group-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
-        <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
-          <label for="ng-name">NEW CATEGORY</label>
-          <input type="text" id="ng-name" placeholder="e.g. Beverages" required>
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Categories</p>
         </div>
-        <button type="submit" class="btn-sm btn-approve">ADD CATEGORY</button>
-      </form>
-      <div id="categories-list" class="category-chips"></div>
-
-      <p class="section-title">Add a product</p>
-      <form id="add-product-form" class="product-row-edit" style="border:none; padding:0; margin-top:0;">
-        <div class="field"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
-        <div class="field"><label for="np-price">PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
-        <div class="field"><label for="np-cost">COST</label><input type="number" id="np-cost" step="0.01" min="0"></div>
-        <div class="field" id="np-stock-field"><label for="np-stock">STOCK QTY</label><input type="number" id="np-stock" step="0.01" min="0"></div>
-        <div class="field" id="np-minqty-field"><label for="np-minqty">MIN QTY</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
-        <div class="field" style="flex:1 1 150px;"><label for="np-discount">DEFAULT DISCOUNT %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
-        <div class="field" style="flex:1 1 160px;"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— no category —</option></select></div>
-        <button type="submit" class="btn-sm btn-approve">ADD PRODUCT</button>
-      </form>
-      <p class="shop-card-meta" style="margin-top:12px; max-width:640px;">Item codes are assigned automatically, in order — you'll be able to link a barcode to one later. Default discount % auto-fills the bill line when this item is added; it can still be changed per sale. Add a category above before assigning it here.</p>
-
-      <div id="stockin-section" style="display:none;">
-        <p class="section-title">Stock in — multiple items</p>
-        <div id="stockin-rows" style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;"></div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn-sm btn-ghost" id="stockin-add-row-btn">+ ADD ITEM</button>
-          <button type="button" class="btn-sm btn-approve" id="stockin-submit-btn">RECORD ALL</button>
-        </div>
-        <p class="shop-card-meta" style="margin-top:10px; max-width:640px;">Add a row per item received, set the qty and unit cost for each, then record them all in one go.</p>
+        <form id="add-group-form" class="inline-add-form">
+          <div class="field" style="flex:1; min-width:140px; margin-bottom:0;">
+            <label for="ng-name">NEW CATEGORY</label>
+            <input type="text" id="ng-name" placeholder="e.g. Beverages" required>
+          </div>
+          <button type="submit" class="btn-sm btn-approve">ADD</button>
+        </form>
+        <div id="categories-list" class="category-chips"></div>
       </div>
 
-      <p class="section-title" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <span>All products</span>
-        <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK IN (MULTIPLE ITEMS)</button>
-      </p>
-      <div id="product-list"><p class="loading-line">Loading…</p></div>
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Add product</p>
+        </div>
+        <form id="add-product-form" class="product-row-edit add-product-form">
+          <div class="field"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
+          <div class="field"><label for="np-price">PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
+          <div class="field"><label for="np-cost">COST</label><input type="number" id="np-cost" step="0.01" min="0"></div>
+          <div class="field" id="np-stock-field"><label for="np-stock">STOCK</label><input type="number" id="np-stock" step="0.01" min="0"></div>
+          <div class="field" id="np-minqty-field"><label for="np-minqty">MIN QTY</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
+          <div class="field"><label for="np-discount">DISC %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
+          <div class="field"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
+          <button type="submit" class="btn-sm btn-approve">ADD PRODUCT</button>
+        </form>
+        <p class="shop-card-meta help-desktop">Item codes are assigned automatically. Default discount % auto-fills on the bill; change per sale if needed.</p>
+      </div>
+
+      <div id="stockin-section" class="panel-block panel-block-accent" style="display:none;">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Stock in</p>
+        </div>
+        <div id="stockin-rows" class="stockin-rows"></div>
+        <div class="panel-block-actions">
+          <button type="button" class="btn-sm btn-ghost" id="stockin-add-row-btn">+ ITEM</button>
+          <button type="button" class="btn-sm btn-approve" id="stockin-submit-btn">RECORD ALL</button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
+          <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK IN</button>
+        </div>
+        <div id="product-list"><p class="loading-line">Loading…</p></div>
+      </div>
     </section>
 
     <!-- HISTORY -->
@@ -208,22 +219,37 @@
 
     <!-- SETTINGS -->
     <section class="tab-panel" id="tab-settings">
-      <p class="section-title" style="padding-top:0; border-top:none;">Shop details</p>
-      <form id="settings-form">
-        <div class="field"><label for="s-legal-name">NAME ON RECEIPT</label><input type="text" id="s-legal-name"></div>
-        <div class="field"><label for="s-address">ADDRESS</label><input type="text" id="s-address"></div>
-        <div class="field"><label for="s-contact">CONTACT NUMBER</label><input type="text" id="s-contact"></div>
-        <div class="field"><label for="s-footer">RECEIPT FOOTER NOTE</label><input type="text" id="s-footer" placeholder="e.g. Thank you, come again"></div>
-        <div class="field">
-          <label for="s-paper">PAPER WIDTH</label>
-          <select id="s-paper">
-            <option value="80">80mm</option>
-            <option value="58">58mm</option>
-          </select>
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Shop details</p>
         </div>
-        <div class="field"><label for="s-tax">TAX RATE (%)</label><input type="number" id="s-tax" step="0.01" min="0"></div>
-        <button type="submit" class="btn" id="settings-save-btn">SAVE SETTINGS</button>
-      </form>
+        <form id="settings-form">
+          <div class="field"><label for="s-legal-name">NAME ON RECEIPT</label><input type="text" id="s-legal-name"></div>
+          <div class="field"><label for="s-address">ADDRESS</label><input type="text" id="s-address"></div>
+          <div class="field"><label for="s-contact">CONTACT NUMBER</label><input type="text" id="s-contact"></div>
+          <div class="field"><label for="s-footer">RECEIPT FOOTER NOTE</label><input type="text" id="s-footer" placeholder="e.g. Thank you, come again"></div>
+          <div class="field">
+            <label for="s-paper">PAPER WIDTH</label>
+            <select id="s-paper">
+              <option value="80">80mm</option>
+              <option value="58">58mm</option>
+            </select>
+          </div>
+          <div class="field"><label for="s-tax">TAX RATE (%)</label><input type="number" id="s-tax" step="0.01" min="0"></div>
+          <button type="submit" class="btn" id="settings-save-btn">SAVE SETTINGS</button>
+        </form>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Account</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 12px;">Password and sign-out live here so the till header stays clear while billing.</p>
+        <div class="account-actions">
+          <button type="button" class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
+          <button type="button" class="btn-sm btn-reject" id="logout-btn">LOG OUT</button>
+        </div>
+      </div>
     </section>
     </main>
   </div>
@@ -460,9 +486,18 @@
 
     function renderCart() {
       const listEl = document.getElementById("cart-list");
+      const countPill = document.getElementById("cart-count-pill");
+      if (countPill) {
+        if (cart.length) {
+          countPill.textContent = String(cart.length);
+          countPill.style.display = "inline-flex";
+        } else {
+          countPill.style.display = "none";
+        }
+      }
       listEl.innerHTML = "";
       if (!cart.length) {
-        listEl.innerHTML = '<p class="empty-cart">No items yet — tap a product to add it.</p>';
+        listEl.innerHTML = '<p class="empty-cart">Tap a product to add it</p>';
       } else {
         cart.forEach((item, i) => {
           const row = document.createElement("div");
