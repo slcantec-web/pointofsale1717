@@ -23,7 +23,11 @@ async function apiFetch(path, options = {}) {
   if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
   const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(data.error || "Something went wrong");
+  if (!resp.ok) {
+    const e = new Error(data.error || "Something went wrong");
+    e.status = resp.status;
+    throw e;
+  }
   return data;
 }
 
@@ -32,7 +36,10 @@ function showStatus(el, message, kind) {
   el.className = `status show ${kind}`;
 }
 
-if ("serviceWorker" in navigator) {
+// Inside the Android app the files are bundled locally, so a service worker would
+// only cache stale copies of them after an app update. Browser/PWA use keeps it.
+const IS_NATIVE_APP = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+if ("serviceWorker" in navigator && !IS_NATIVE_APP) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/service-worker.js").catch(() => {});
   });

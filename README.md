@@ -140,3 +140,9 @@ This affects every page sharing `style.css` (login, signup, admin, and the new d
 Weighted-average cost recalculation on stock-in reads the product's current qty/cost, then writes — there's a small race window if two stock-in requests for the *same product* land at the exact same moment. Not a concern for typical single-terminal small-shop usage; if it ever matters, the fix is a Durable Object per shop to fully serialize writes.
 
 The Gmail SMTP path (`EMAIL_PROVIDER=gmail`) is a hand-written minimal SMTP client — it covers the plain send/auth flow needed here but has no retry logic and hasn't been battle-tested at volume. If email ever becomes business-critical at scale, Resend (or a verified-domain provider generally) is the more robust long-term choice.
+
+## Email OTP + offline Android app (this pass)
+- **Signup** now verifies the email with a 6-digit code (`POST /api/shops/signup/request-otp {email}`, then `POST /api/shops/signup` with `otp`). **Forgot password** uses the same kind of code (`POST /api/auth/forgot-password`, then `POST /api/auth/reset-password {email, code, password}`). Codes go through the existing `sendEmail()` gateway, are stored hashed in `otp_codes`, expire in 10 minutes, allow 5 attempts, and are limited to 5 per hour per email. The admin RESET PW button still sends the old link (`{token, password}` still accepted).
+- **Offline sales:** `offline.js` caches products/categories/settings and queues sales made offline in IndexedDB; they post automatically when back online. `POST /api/documents/sale` accepts `client_ref` (idempotency key, stops duplicates on retry) and `created_at` (original sale time).
+- **Run once in the D1 Console:** `migration-add-otp-and-client-ref.sql`. Deploy the Worker **before** the Pages site picks up the new signup page.
+- **Android APK:** see `BUILD-APK.md` (`android-app/` is a Capacitor wrapper; GitHub Actions builds the debug APK).

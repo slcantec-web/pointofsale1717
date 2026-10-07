@@ -33,6 +33,7 @@
         <p id="header-sub">Ring up a sale</p>
       </div>
       <div class="header-actions">
+        <span class="nav-pill urgent" id="offline-badge" style="display:none; margin:0;"></span>
         <button class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
         <button class="btn-sm btn-ghost" id="logout-btn">LOG OUT</button>
       </div>
@@ -241,6 +242,7 @@
   </div>
 
   <script src="/app.js"></script>
+  <script src="/offline.js"></script>
   <script>
     if (!Auth.isLoggedIn() || Auth.role !== "shop") {
       window.location.href = "/index.html";
@@ -354,7 +356,7 @@
     // ---------- init ----------
     async function init() {
       try {
-        shop = await apiFetch("/api/shop/settings");
+        shop = await cachedGet("/api/shop/settings");
         document.getElementById("shop-title").textContent = shop.name;
         document.getElementById("np-stock-field").style.display = shop.tracks_inventory ? "" : "none";
         document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
@@ -620,9 +622,14 @@
         unit_price: i.unit_price,
         discount_amount: i.discount_amount || 0,
       }));
+      const clientRef = newClientRef();
+      const createdAt = new Date().toISOString();
       try {
+        if (!editingDocId && !navigator.onLine) throw new TypeError("offline");
         const path = editingDocId ? `/api/documents/${editingDocId}/edit` : "/api/documents/sale";
-        const result = await apiFetch(path, { method: "POST", body: JSON.stringify({ items, received_amount: receivedAmount }) });
+        const payload = { items, received_amount: receivedAmount };
+        if (!editingDocId) { payload.client_ref = clientRef; payload.created_at = createdAt; }
+        const result = await apiFetch(path, { method: "POST", body: JSON.stringify(payload) });
         showStatus(statusEl, editingDocId ? "Sale updated." : `Sale posted — doc #${result.docNumber}.`, "ok");
         cart = [];
         editingDocId = null;
@@ -631,6 +638,7 @@
         renderCart();
         const lastActions = document.getElementById("last-sale-actions");
         lastActions.style.display = "block";
+        document.getElementById("void-last-btn").style.display = "";
         document.getElementById("print-last-btn").onclick = () => printReceipt(result.documentId);
         document.getElementById("void-last-btn").onclick = async () => {
           if (!confirm(`Void sale #${result.docNumber}? This reverses the stock and revenue effect.`)) return;
@@ -645,11 +653,47 @@
         };
         loadProducts();
       } catch (e) {
-        showStatus(statusEl, e.message, "err");
+        if (!editingDocId && isNetworkError(e)) {
+          await saveSaleOffline({ clientRef, createdAt, items, total });
+        } else {
+          showStatus(statusEl, e.message, "err");
+        }
       } finally {
         btn.disabled = false; btn.textContent = "POST SALE";
       }
     }
+
+    // ---- offline: queue the sale on the device; flushSales() (offline.js) posts it when back online ----
+    let offlineSeq = parseInt(localStorage.getItem("pos_offline_seq") || "0", 10);
+    async function saveSaleOffline({ clientRef, createdAt, items, total }) {
+      const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0);
+      const discount = items.reduce((s, i) => s + (i.discount_amount || 0), 0);
+      const tax = total - (subtotal - discount);
+      await queueSale({ client_ref: clientRef, items, received_amount: receivedAmount, created_at: createdAt, total });
+
+      // reflect the sale in the local stock numbers so the pick list stays sensible
+      items.forEach((it) => {
+        const p = products.find((x) => x.id === it.product_id);
+        if (p && p.stock_qty !== null && shop.tracks_inventory) p.stock_qty -= it.qty;
+      });
+
+      offlineSeq += 1;
+      localStorage.setItem("pos_offline_seq", String(offlineSeq));
+      const receipt = {
+        shop, status: "ORIGINAL", is_reprint: false, print_count: 1,
+        doc: { doc_number: "OFF-" + offlineSeq, doc_type: "SALE", created_at: createdAt.replace("T", " ").slice(0, 19),
+               subtotal, discount_amount: discount, tax_amount: tax, total, received_amount: receivedAmount },
+        items: items.map((i) => ({ ...i, line_total: i.qty * i.unit_price - (i.discount_amount || 0), item_code: (products.find((p) => p.id === i.product_id) || {}).item_code })),
+      };
+      showStatus(statusEl, `Saved offline as OFF-${offlineSeq} — it will post automatically when you're back online.`, "ok");
+      cart = []; editingDocId = null; receivedManual = false;
+      renderCart(); renderPickList(document.getElementById("product-search").value); updateLowStockPill();
+      const lastActions = document.getElementById("last-sale-actions");
+      lastActions.style.display = "block";
+      document.getElementById("void-last-btn").style.display = "none"; // can't void what the server hasn't seen yet
+      document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); setTimeout(() => window.print(), 50); };
+    }
+    window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
 
     document.getElementById("cancel-edit-btn").addEventListener("click", () => {
       editingDocId = null;
@@ -735,14 +779,14 @@
 
     // ================= PRODUCTS =================
     async function loadProducts() {
-      products = await apiFetch("/api/products");
+      products = await cachedGet("/api/products");
       updateLowStockPill();
       refreshTxItemOptions();
     }
 
     // ---------- item groups / categories (managed via /api/item-groups) ----------
     async function loadItemGroups() {
-      itemGroups = await apiFetch("/api/item-groups");
+      itemGroups = await cachedGet("/api/item-groups");
       renderGroupControls();
     }
 

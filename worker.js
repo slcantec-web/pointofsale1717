@@ -354,43 +354,113 @@ async function sendViaGmailSmtp(env, to, subject, html) {
   }
 }
 
+// ---------- OTP (email one-time codes) ----------
+// 6-digit codes sent through the existing sendEmail() gateway. Stored only as HMAC hashes.
+// Valid 10 minutes, 5 wrong tries max, 5 codes per email+purpose per hour.
+function generateOtp() {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000;
+  return String(n).padStart(6, "0");
+}
+
+async function otpHash(env, email, purpose, code) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(env.AUTH_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${email.toLowerCase()}|${purpose}|${code}`));
+  return bufToHex(sig);
+}
+
+async function issueOtp(env, email, purpose) {
+  const recent = await env.DB.prepare(
+    `SELECT COUNT(*) AS c FROM otp_codes WHERE email = ? AND purpose = ? AND created_at > datetime('now','-1 hour')`
+  ).bind(email, purpose).first();
+  if (recent.c >= 5) {
+    const e = new Error("too many codes requested — try again in an hour");
+    e.status = 429;
+    throw e;
+  }
+  const code = generateOtp();
+  const hash = await otpHash(env, email, purpose, code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await env.DB.prepare(`INSERT INTO otp_codes (email, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?)`)
+    .bind(email, purpose, hash, expiresAt).run();
+  const what = purpose === "signup" ? "verify your email" : "reset your password";
+  await sendEmail(
+    env, email, `Your POS code: ${code}`,
+    `<p>Use this code to ${what}:</p><p style="font-size:28px;letter-spacing:6px;font-weight:700">${code}</p><p>It expires in 10 minutes. If you didn't request it, ignore this email.</p>`
+  );
+}
+
+// Returns true and burns the code if valid.
+async function consumeOtp(env, email, purpose, code) {
+  if (!code || !/^\d{6}$/.test(String(code))) return false;
+  const row = await env.DB.prepare(
+    `SELECT * FROM otp_codes WHERE email = ? AND purpose = ? AND used = 0 ORDER BY id DESC LIMIT 1`
+  ).bind(email, purpose).first();
+  if (!row || new Date(row.expires_at) < new Date() || row.attempts >= 5) return false;
+  const hash = await otpHash(env, email, purpose, String(code));
+  if (hash !== row.code_hash) {
+    await env.DB.prepare(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?`).bind(row.id).run();
+    return false;
+  }
+  await env.DB.prepare(`UPDATE otp_codes SET used = 1 WHERE id = ?`).bind(row.id).run();
+  return true;
+}
+
+// Step 1 of signup: email the verification code.
+async function handleSignupOtp(request, env) {
+  const { email } = await request.json();
+  if (!isValidEmail(email)) return err("a valid email address is required");
+  const existing = await env.DB.prepare(`SELECT id FROM users WHERE email = ?`).bind(email).first();
+  if (existing) return err("an account with this email already exists", 409);
+  await issueOtp(env, email, "signup");
+  return json({ ok: true });
+}
+
 async function handleForgotPassword(request, env) {
   const { email } = await request.json();
   if (!email) return err("email required");
-  // Malformed addresses can't belong to a real account anyway (signup/admin-create
-  // both validate on the way in) — short-circuit before ever touching sendEmail.
-  // Still returns the same generic {ok:true}, so this doesn't leak anything an
-  // invalid-format check wouldn't already reveal on its own.
+  // Malformed addresses can't belong to a real account anyway — short-circuit with the same generic ok.
   if (!isValidEmail(email)) return json({ ok: true });
 
-  const user = await env.DB.prepare(`SELECT * FROM users WHERE email = ? AND active = 1`).bind(email).first();
+  const user = await env.DB.prepare(`SELECT id FROM users WHERE email = ? AND active = 1`).bind(email).first();
   // Always return ok even if not found, so this endpoint can't be used to test which emails are registered
-  if (user) await sendPasswordResetEmail(env, user);
+  if (user) await issueOtp(env, email, "reset");
 
   return json({ ok: true });
 }
 
+// Accepts either {email, code, password} (OTP from forgot-password) or {token, password}
+// (legacy emailed link, still used by the admin "RESET PW" button).
 async function handleResetPassword(request, env) {
-  const { token, password } = await request.json();
-  if (!token || !password) return err("token and password required");
+  const { token, email, code, password } = await request.json();
+  if (!password) return err("password required");
   if (password.length < 8) return err("password must be at least 8 characters");
 
-  const link = await env.DB.prepare(`SELECT * FROM magic_links WHERE token = ?`).bind(token).first();
-  if (!link || link.used || new Date(link.expires_at) < new Date()) return err("this reset link is invalid or has expired", 401);
-
-  await env.DB.prepare(`UPDATE magic_links SET used = 1 WHERE id = ?`).bind(link.id).run();
-  const passwordHash = await hashPassword(password);
-  await env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(passwordHash, link.user_id).run();
+  let userId;
+  if (token) {
+    const link = await env.DB.prepare(`SELECT * FROM magic_links WHERE token = ?`).bind(token).first();
+    if (!link || link.used || new Date(link.expires_at) < new Date()) return err("this reset link is invalid or has expired", 401);
+    await env.DB.prepare(`UPDATE magic_links SET used = 1 WHERE id = ?`).bind(link.id).run();
+    userId = link.user_id;
+  } else {
+    if (!email || !(await consumeOtp(env, email, "reset", code))) return err("invalid or expired code", 401);
+    const user = await env.DB.prepare(`SELECT id FROM users WHERE email = ? AND active = 1`).bind(email).first();
+    if (!user) return err("invalid or expired code", 401);
+    userId = user.id;
+  }
+  await env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(await hashPassword(password), userId).run();
 
   return json({ ok: true });
 }
 
 async function handleShopSignup(request, env) {
   const body = await request.json();
-  const { name, email, password, tracks_inventory, address, contact_number } = body;
+  const { name, email, password, tracks_inventory, address, contact_number, otp } = body;
   if (!name || !email) return err("name and email required");
   if (!isValidEmail(email)) return err("a valid email address is required");
   if (!password || password.length < 8) return err("password must be at least 8 characters");
+  if (!(await consumeOtp(env, email, "signup", otp))) return err("invalid or expired verification code", 400);
 
   const existing = await env.DB.prepare(`SELECT id FROM users WHERE email = ?`).bind(email).first();
   if (existing) return err("an account with this email already exists", 409);
@@ -875,6 +945,14 @@ async function handleSale(request, env, auth) {
   const items = body.items; // [{ product_id?, name, qty, unit_price, discount_amount }]
   if (!Array.isArray(items) || !items.length) return err("items required");
 
+  // Offline-synced sales carry a client_ref: if we've already stored one, return it instead of double-posting.
+  const clientRef = typeof body.client_ref === "string" && body.client_ref ? body.client_ref.slice(0, 64) : null;
+  if (clientRef) {
+    const dup = await env.DB.prepare(`SELECT id, doc_number, total FROM documents WHERE shop_id = ? AND client_ref = ?`)
+      .bind(auth.shopId, clientRef).first();
+    if (dup) return json({ documentId: dup.id, docNumber: dup.doc_number, total: dup.total, duplicate: true });
+  }
+
   const owned = await loadOwnedProducts(env.DB, auth.shopId, items.map((it) => it.product_id).filter(Boolean));
 
   const preparedItems = items.map((it) => {
@@ -899,6 +977,14 @@ async function handleSale(request, env, auth) {
     taxRate: shop.tax_rate,
     receivedAmount: typeof body.received_amount === "number" ? body.received_amount : undefined,
   });
+
+  if (clientRef) {
+    // keep the time the sale was actually rung up, so reports land on the right day
+    const t = body.created_at && !isNaN(Date.parse(body.created_at)) ? new Date(body.created_at) : null;
+    const sqlTime = t && t.getTime() <= Date.now() + 60000 ? t.toISOString().replace("T", " ").slice(0, 19) : null;
+    await env.DB.prepare(`UPDATE documents SET client_ref = ?, created_at = COALESCE(?, created_at) WHERE id = ?`)
+      .bind(clientRef, sqlTime, result.documentId).run();
+  }
 
   return json(result);
 }
@@ -1194,6 +1280,7 @@ export default {
       if (path === "/api/auth/login" && method === "POST") return await handleLogin(request, env);
       if (path === "/api/auth/forgot-password" && method === "POST") return await handleForgotPassword(request, env);
       if (path === "/api/auth/reset-password" && method === "POST") return await handleResetPassword(request, env);
+      if (path === "/api/shops/signup/request-otp" && method === "POST") return await handleSignupOtp(request, env);
       if (path === "/api/shops/signup" && method === "POST") return await handleShopSignup(request, env);
 
       // everything below requires auth

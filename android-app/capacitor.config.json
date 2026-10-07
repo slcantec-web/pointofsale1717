@@ -1,0 +1,9 @@
+{
+  "appId": "com.slcantec.pos",
+  "appName": "POS",
+  "webDir": "www",
+  "backgroundColor": "#E7EBF1",
+  "android": {
+    "allowMixedContent": false
+  }
+}

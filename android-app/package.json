@@ -1,0 +1,16 @@
+{
+  "name": "pos-android",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "prepare-web": "node prepare-web.js",
+    "sync": "npm run prepare-web && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  }
+}
