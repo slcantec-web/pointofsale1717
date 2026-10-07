@@ -1,1 +1,137 @@
-/* PLACEHOLDER - will use local full file */
+/* =========================================================
+   POS — "till" design system
+   Cobalt rail + price-tag yellow. Fonts are bundled (/fonts) so the
+   Android app looks identical offline.
+   ========================================================= */
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('/fonts/bricolage.woff2') format('woff2');
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Figtree';
+  src: url('/fonts/figtree.woff2') format('woff2');
+  font-weight: 300 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  --brand: #2B4BF2;
+  --brand-deep: #1D37C7;
+  --brand-soft: #E6EBFF;
+  --tag: #FFD43B;
+  --tag-deep: #D9A900;
+  --tag-soft: #FFF4C7;
+  --tag-ink: #6B4B00;
+
+  --ink: #12182B;
+  --ink-deep: #0B1020;
+  --ink-soft: #5B647C;
+  --canvas: #F2F4FA;
+  --paper: #FFFFFF;
+  --paper-dim: #EEF1F9;
+  --line: #DADFEE;
+
+  --ok: #0F9D68;
+  --ok-soft: #DDF5EA;
+  --rust: #D93A4A;
+  --rust-soft: #FDE6E8;
+
+  --green: var(--brand);
+  --green-deep: var(--brand-deep);
+  --gold: var(--tag-deep);
+  --bg: var(--ink);
+
+  --display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
+  --body: 'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 18px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; overflow-x: hidden; }
+html { background: var(--canvas); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--canvas);
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a { color: inherit; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; }
+input, select, textarea, button { font-family: var(--body); font-weight: 600; font-variant-numeric: tabular-nums; }
+::selection { background: var(--tag); color: var(--ink); }
+:focus-visible { outline: 3px solid rgba(43,75,242,0.55); outline-offset: 2px; }
+
+.field label, .modal-body label, .btn, .btn-sm, .mini-table th,
+.summary-card-label, .stamp, .nav-pill, .group-chip, .ledger-head span,
+.editing-banner, .cat-actions button {
+  text-transform: lowercase;
+}
+.field label::first-letter, .modal-body label::first-letter, .btn::first-letter, .btn-sm::first-letter,
+.mini-table th::first-letter, .summary-card-label::first-letter,
+.stamp::first-letter, .nav-pill::first-letter, .group-chip::first-letter, .ledger-head span::first-letter,
+.editing-banner::first-letter, .cat-actions button::first-letter {
+  text-transform: uppercase;
+}
+.mini-table th.keep-case { text-transform: none; }
+.mini-table th.keep-case::first-letter { text-transform: none; }
+
+.app-main::-webkit-scrollbar, .pick-list::-webkit-scrollbar, .cart-list::-webkit-scrollbar { width: 8px; height: 8px; }
+.app-main::-webkit-scrollbar-thumb, .pick-list::-webkit-scrollbar-thumb, .cart-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 20px; }
+
+.mark {
+  display: inline-block; flex: none;
+  width: 38px; height: 38px; border-radius: 11px;
+  background: var(--tag); position: relative;
+  font-size: 0; line-height: 0; color: transparent; letter-spacing: 0;
+}
+.mark::before {
+  content: ""; position: absolute; inset: 8px; background: var(--ink);
+  -webkit-mask: var(--ic-tag) center / contain no-repeat; mask: var(--ic-tag) center / contain no-repeat;
+}
+
+:root {
+  --ic-tag: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12V4h8l10 10-8 8z'/%3E%3Ccircle cx='7.5' cy='8.5' r='1.3'/%3E%3C/svg%3E");
+  --ic-bill: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h12v18l-3-2-3 2-3-2-3 2z'/%3E%3Cpath d='M9 8h6M9 12h6'/%3E%3C/svg%3E");
+  --ic-products: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z'/%3E%3Cpath d='M3 7.5 12 12l9-4.5M12 12v9'/%3E%3C/svg%3E");
+  --ic-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+  --ic-reports: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 20V11M12 20V4M19 20v-6'/%3E%3C/svg%3E");
+  --ic-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h9M19 7h1M4 17h1M11 17h9'/%3E%3Ccircle cx='16' cy='7' r='2.2'/%3E%3Ccircle cx='8' cy='17' r='2.2'/%3E%3C/svg%3E");
+  --ic-inbox: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13l2-8h12l2 8v6H4z'/%3E%3Cpath d='M4 13h5l1 2h4l1-2h5'/%3E%3C/svg%3E");
+  --ic-shop: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 9l1-5h14l1 5'/%3E%3Cpath d='M4 9a3 3 0 0 0 5.3 2 3 3 0 0 0 5.4 0A3 3 0 0 0 20 9'/%3E%3Cpath d='M5 13v7h14v-7'/%3E%3C/svg%3E");
+  --ic-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B647C' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  --ic-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+
+/* RESTORE NOTE: full stylesheet truncated in this emergency restore attempt - use local clone */
+body { margin: 0; font-family: var(--body); background: var(--canvas); color: var(--ink); }
+.app-shell { height: 100vh; display: grid; grid-template-columns: 248px 1fr; grid-template-rows: auto 1fr; grid-template-areas: "nav header" "nav main"; }
+.app-nav { grid-area: nav; background: var(--brand); color: #fff; display: flex; flex-direction: column; padding: 24px 16px; }
+.nav-tab-btn[data-tab="pending"] { --ic: var(--ic-inbox); }
+.nav-tab-btn[data-tab="shops"] { --ic: var(--ic-shop); }
+.nav-tab-btn[data-tab="bill"] { --ic: var(--ic-bill); }
+.nav-tab-btn[data-tab="products"] { --ic: var(--ic-products); }
+.nav-tab-btn[data-tab="history"] { --ic: var(--ic-history); }
+.nav-tab-btn[data-tab="reports"] { --ic: var(--ic-reports); }
+.nav-tab-btn[data-tab="settings"] { --ic: var(--ic-settings); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
