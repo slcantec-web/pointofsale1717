@@ -245,7 +245,7 @@
   <script src="/offline.js"></script>
   <script>
     if (!Auth.isLoggedIn() || Auth.role !== "shop") {
-      window.location.href = "/index.html";
+      goTo("index.html");
     }
 
     const statusEl = document.getElementById("status");
@@ -312,21 +312,32 @@
 
     document.getElementById("logout-btn").addEventListener("click", () => {
       Auth.clear();
-      window.location.href = "/index.html";
+      goTo("index.html");
     });
 
-    // ---------- tabs ----------
+    // ---------- tabs (explicit display for Android WebView) ----------
     document.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTab(btn.dataset.tab);
+      });
     });
     function switchTab(name) {
+      if (!name) return;
       document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        const on = p.id === "tab-" + name;
+        p.classList.toggle("active", on);
+        p.style.display = on ? "block" : "none";
+      });
       const activeBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
       if (activeBtn) {
         document.getElementById("header-title").textContent = activeBtn.dataset.title || activeBtn.textContent;
         document.getElementById("header-sub").textContent = activeBtn.dataset.sub || "";
       }
+      const main = document.querySelector(".app-main");
+      if (main) main.scrollTop = 0;
       if (name === "history") loadHistory();
       if (name === "reports") { loadReports(); loadTransactions(); }
     }
@@ -368,7 +379,7 @@
         renderProducts();
       } catch (e) {
         showStatus(statusEl, e.message, "err");
-        if (e.message === "unauthorized") { Auth.clear(); setTimeout(() => (window.location.href = "/index.html"), 1200); }
+        if (e.message === "unauthorized") { Auth.clear(); setTimeout(() => (goTo("index.html")), 1200); }
       }
       const from30 = isoDaysAgo(30);
       const today = isoDaysAgo(0);

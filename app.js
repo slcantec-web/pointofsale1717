@@ -36,6 +36,12 @@ function showStatus(el, message, kind) {
   el.className = `status show ${kind}`;
 }
 
+/** Navigate within the app — relative paths work on web and Capacitor WebView. */
+function goTo(page) {
+  const name = String(page || "index.html").replace(/^\//, "");
+  window.location.href = name;
+}
+
 // Inside the Android app the files are bundled locally, so a service worker would
 // only cache stale copies of them after an app update. Browser/PWA use keeps it.
 const IS_NATIVE_APP = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());

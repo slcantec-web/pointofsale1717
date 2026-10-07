@@ -18,8 +18,8 @@
       <p class="nav-subtitle">Super admin</p>
       <span class="nav-pill zero" id="pending-count">— pending</span>
       <div class="nav-tabs">
-        <button type="button" class="nav-tab-btn tab-btn active" data-tab="pending" data-title="Awaiting review" data-sub="Shops waiting for approval">Awaiting review</button>
-        <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">All shops</button>
+        <button type="button" class="nav-tab-btn tab-btn active" data-tab="pending" data-title="Awaiting review" data-sub="Shops waiting for approval">Pending</button>
+        <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">Shops</button>
       </div>
       <div class="nav-foot">POS · admin console</div>
     </nav>
@@ -74,7 +74,7 @@
   <script>
     // Guard: super admin only
     if (!Auth.isLoggedIn() || Auth.role !== "super_admin") {
-      window.location.href = "/index.html";
+      goTo("index.html");
     }
 
     const statusEl = document.getElementById("status");
@@ -85,22 +85,36 @@
 
     document.getElementById("logout-btn").addEventListener("click", () => {
       Auth.clear();
-      window.location.href = "/index.html";
+      goTo("index.html");
     });
 
-    // ---------- tabs (same pattern as dashboard — works on web + APK) ----------
+    // ---------- tabs (same pattern as dashboard — works on web + APK WebView) ----------
     document.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTab(btn.dataset.tab);
+      });
     });
     function switchTab(name) {
+      if (!name) return;
       document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        const on = p.id === "tab-" + name;
+        p.classList.toggle("active", on);
+        // explicit display helps Android WebView when class toggle alone is flaky
+        p.style.display = on ? "block" : "none";
+      });
       const activeBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
       if (activeBtn) {
         document.getElementById("header-title").textContent = activeBtn.dataset.title || activeBtn.textContent;
         document.getElementById("header-sub").textContent = activeBtn.dataset.sub || "";
       }
+      const main = document.querySelector(".app-main");
+      if (main) main.scrollTop = 0;
     }
+    // ensure only the active panel is visible on first paint (APK)
+    switchTab("pending");
 
     const backupBtn = document.getElementById("backup-btn");
     const restoreBtn = document.getElementById("restore-btn");
@@ -322,7 +336,7 @@
         showStatus(statusEl, e.message, "err");
         if (e.message === "unauthorized") {
           Auth.clear();
-          setTimeout(() => (window.location.href = "/index.html"), 1200);
+          setTimeout(() => (goTo("index.html")), 1200);
         }
       }
     }
