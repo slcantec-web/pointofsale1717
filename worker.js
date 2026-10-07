@@ -877,8 +877,23 @@ async function handleUpdateProduct(request, env, auth, productId) {
   return json({ ok: true });
 }
 
+// Delete is blocked while stock remains (deactivate instead). Past sale lines keep their
+// name snapshot; their product_id is cleared so the foreign key doesn't block the delete.
+async function handleDeleteProduct(request, env, auth, productId) {
+  const product = await env.DB.prepare(`SELECT * FROM products WHERE id = ? AND shop_id = ?`).bind(productId, auth.shopId).first();
+  if (!product) return err("product not found", 404);
+  if ((product.stock_qty || 0) > 0) {
+    return err(`can't delete — ${product.stock_qty} still in stock. Deactivate it instead.`, 409);
+  }
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE document_items SET product_id = NULL WHERE product_id = ?`).bind(productId),
+    env.DB.prepare(`DELETE FROM products WHERE id = ? AND shop_id = ?`).bind(productId, auth.shopId),
+  ]);
+  return json({ ok: true });
+}
+
 async function handleListProducts(request, env, auth) {
-  const { results } = await env.DB.prepare(`SELECT * FROM products WHERE shop_id = ? AND active = 1 ORDER BY name`)
+  const { results } = await env.DB.prepare(`SELECT * FROM products WHERE shop_id = ? ORDER BY active DESC, name`)
     .bind(auth.shopId)
     .all();
   return json(results);
@@ -1319,6 +1334,7 @@ export default {
       if (path === "/api/products" && method === "GET") return await handleListProducts(request, env, auth);
       const productMatch = path.match(/^\/api\/products\/(\d+)$/);
       if (productMatch && method === "PUT") return await handleUpdateProduct(request, env, auth, productMatch[1]);
+      if (productMatch && method === "DELETE") return await handleDeleteProduct(request, env, auth, productMatch[1]);
 
       if (path === "/api/documents/stock-in" && method === "POST") return await handleStockIn(request, env, auth);
       if (path === "/api/documents/sale" && method === "POST") return await handleSale(request, env, auth);

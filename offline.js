@@ -178,7 +178,23 @@ async function flushAll() {
 async function pendingCount() {
   const sales = await OfflineDB.getAll("sales").catch(() => []);
   const writes = await OfflineDB.getAll("writes").catch(() => []);
-  return { sales: sales.length, writes: writes.length, total: sales.length + writes.length, hasError: sales.some((x) => x.error) || writes.some((x) => x.error) };
+  const firstErr = [...sales, ...writes].find((x) => x.error);
+  return { sales: sales.length, writes: writes.length, total: sales.length + writes.length, hasError: !!firstErr, firstError: firstErr ? firstErr.error : "" };
+}
+
+// Give previously-failed items another go (used by the SYNC button).
+async function retryFailedQueue() {
+  for (const store of ["sales", "writes"]) {
+    const rows = await OfflineDB.getAll(store).catch(() => []);
+    for (const r of rows) if (r.error) { r.error = null; await OfflineDB.put(store, r); }
+  }
+}
+
+// Drop queued changes (not sales) that keep failing, so the UNSYNCED badge can clear.
+async function discardFailedWrites() {
+  const rows = await OfflineDB.getAll("writes").catch(() => []);
+  for (const r of rows) if (r.error) await OfflineDB.del("writes", r.id);
+  updatePendingBadge();
 }
 
 async function updatePendingBadge() {

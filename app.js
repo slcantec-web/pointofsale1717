@@ -34,6 +34,12 @@ async function apiFetch(path, options = {}) {
 function showStatus(el, message, kind) {
   el.textContent = message;
   el.className = `status show ${kind}`;
+  clearTimeout(el._hideT);
+  // Auto-clear only inside the app screens (dashboard/admin). Signup/login messages stay.
+  if (el.closest && el.closest(".app-main")) {
+    el._hideT = setTimeout(() => { el.className = "status"; }, kind === "err" ? 7000 : 4000);
+    el.onclick = () => { el.className = "status"; };
+  }
 }
 
 /** Navigate within the app — relative paths work on web and Capacitor WebView. */

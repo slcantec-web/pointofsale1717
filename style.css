@@ -790,3 +790,28 @@ body:has(.app-shell) { padding: 0; }
   .print-receipt { width: 80mm; max-width: 80mm; margin: 0; padding: 3mm 4mm; box-shadow: none; }
   .print-receipt.narrow { width: 58mm; max-width: 58mm; padding: 2mm 3mm; }
 }
+
+.field-full { flex: 1 1 100%; }
+#offline-badge { cursor: pointer; }
+
+/* Phone layout for add-product, edit-product, stock-in and category forms */
+@media (max-width: 900px) {
+  .add-product-form, .product-row-edit, .stock-in-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; width: 100%;
+  }
+  .add-product-form .field, .product-row-edit .field, .stock-in-row .field {
+    min-width: 0; margin-bottom: 0; flex: none; width: 100%;
+  }
+  .add-product-form .field-full, .product-row-edit .field-full, .stock-in-row .field-full { grid-column: 1 / -1; }
+  .add-product-form > .btn-sm, .product-row-edit > .btn-sm, .stock-in-row > .btn-sm {
+    grid-column: 1 / -1; width: 100%; padding: 13px; text-align: center; font-size: 14px;
+  }
+  .stock-in-row { padding: 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; margin-top: 0; }
+  .stockin-rows { gap: 10px; }
+
+  .inline-add-form { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: stretch; }
+  .inline-add-form .field { min-width: 0 !important; width: 100%; }
+  .inline-add-form .btn-sm { width: 100%; padding: 13px; text-align: center; font-size: 14px; }
+  .category-chips { gap: 6px; }
+  .product-row-actions { grid-template-columns: 1fr 1fr; }
+}
