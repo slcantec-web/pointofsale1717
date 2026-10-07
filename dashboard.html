@@ -693,6 +693,21 @@
       document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); setTimeout(() => window.print(), 50); };
     }
     window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
+    window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
+    window.onOfflineSynced = (n) => { /* toast already shown by offline.js */ };
+
+    /** Try online write; if offline, queue and optionally apply local optimistic update. */
+    async function apiWriteOrQueue({ path, method, body, label, onOffline }) {
+      try {
+        if (!navigator.onLine) throw new TypeError("offline");
+        return await apiFetch(path, { method, body: JSON.stringify(body) });
+      } catch (e) {
+        if (!isNetworkError(e)) throw e;
+        await queueWrite({ path, method: method || "POST", body, label: label || "Change" });
+        if (typeof onOffline === "function") await onOffline();
+        return { offline: true };
+      }
+    }
 
     document.getElementById("cancel-edit-btn").addEventListener("click", () => {
       editingDocId = null;
@@ -879,8 +894,15 @@
         const newName = form.name.value.trim();
         if (!newName) return;
         try {
-          await apiFetch(`/api/item-groups/${g.id}`, { method: "PUT", body: JSON.stringify({ name: newName }) });
-          showStatus(statusEl, "Category renamed.", "ok");
+          const res = await apiWriteOrQueue({
+            path: `/api/item-groups/${g.id}`, method: "PUT", body: { name: newName }, label: "Category rename",
+            onOffline: async () => {
+              g.name = newName;
+              if (selectedGroup === g.name) selectedGroup = newName;
+              await cachePut("/api/item-groups", itemGroups);
+            },
+          });
+          showStatus(statusEl, res && res.offline ? "Category renamed (offline)." : "Category renamed.", "ok");
           if (selectedGroup === g.name) selectedGroup = newName;
           await loadItemGroups();
           await loadProducts();
@@ -896,8 +918,15 @@
     async function deleteGroup(g) {
       if (!confirm(`Delete category "${g.name}"? Products using it become uncategorized — nothing else about them changes.`)) return;
       try {
-        await apiFetch(`/api/item-groups/${g.id}`, { method: "DELETE" });
-        showStatus(statusEl, "Category deleted.", "ok");
+        const res = await apiWriteOrQueue({
+          path: `/api/item-groups/${g.id}`, method: "DELETE", body: {}, label: "Category delete",
+          onOffline: async () => {
+            itemGroups = itemGroups.filter((x) => x.id !== g.id);
+            await cachePut("/api/item-groups", itemGroups);
+            if (selectedGroup === g.name) selectedGroup = "";
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Category deleted (offline)." : "Category deleted.", "ok");
         if (selectedGroup === g.name) selectedGroup = "";
         await loadItemGroups();
         await loadProducts();
@@ -914,8 +943,14 @@
       const name = nameInput.value.trim();
       if (!name) return;
       try {
-        await apiFetch("/api/item-groups", { method: "POST", body: JSON.stringify({ name }) });
-        showStatus(statusEl, "Category added.", "ok");
+        const res = await apiWriteOrQueue({
+          path: "/api/item-groups", method: "POST", body: { name }, label: "Category add",
+          onOffline: async () => {
+            itemGroups = itemGroups.concat([{ id: "local-" + Date.now(), name }]);
+            await cachePut("/api/item-groups", itemGroups);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Category added (offline)." : "Category added.", "ok");
         nameInput.value = "";
         await loadItemGroups();
       } catch (err) {
@@ -950,8 +985,15 @@
         if (minQty !== "") body.low_stock_threshold = parseInt(minQty, 10);
       }
       try {
-        await apiFetch("/api/products", { method: "POST", body: JSON.stringify(body) });
-        showStatus(statusEl, "Product added.", "ok");
+        const res = await apiWriteOrQueue({
+          path: "/api/products", method: "POST", body, label: "Product add",
+          onOffline: async () => {
+            const local = { id: "local-" + Date.now(), ...body, active: 1, item_code: body.item_code || null };
+            products = products.concat([local]);
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Product added (offline)." : "Product added.", "ok");
         e.target.reset();
         await loadProducts();
         renderProducts();
@@ -1019,8 +1061,14 @@
             item_group: form.item_group.value || null,
           };
           if (shop.tracks_inventory) payload.low_stock_threshold = parseInt(form.low_stock_threshold.value, 10) || 0;
-          await apiFetch(`/api/products/${p.id}`, { method: "PUT", body: JSON.stringify(payload) });
-          showStatus(statusEl, "Product updated.", "ok");
+          const res = await apiWriteOrQueue({
+            path: `/api/products/${p.id}`, method: "PUT", body: payload, label: "Product update",
+            onOffline: async () => {
+              Object.assign(p, payload);
+              await cachePut("/api/products", products);
+            },
+          });
+          showStatus(statusEl, res && res.offline ? "Product updated (offline)." : "Product updated.", "ok");
           await loadProducts();
           renderProducts();
           renderPickList();
@@ -1043,12 +1091,19 @@
       `;
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        const qty = parseFloat(form.qty.value);
+        const unit_cost = parseFloat(form.unit_cost.value);
+        const items = [{ product_id: p.id, name: p.name, qty, unit_cost }];
         try {
-          await apiFetch("/api/documents/stock-in", {
-            method: "POST",
-            body: JSON.stringify({ items: [{ product_id: p.id, name: p.name, qty: parseFloat(form.qty.value), unit_cost: parseFloat(form.unit_cost.value) }] }),
+          const res = await apiWriteOrQueue({
+            path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
+            onOffline: async () => {
+              if (p.stock_qty != null) p.stock_qty = (parseFloat(p.stock_qty) || 0) + qty;
+              p.cost_price = unit_cost;
+              await cachePut("/api/products", products);
+            },
           });
-          showStatus(statusEl, "Stock updated.", "ok");
+          showStatus(statusEl, res && res.offline ? "Stock updated (offline)." : "Stock updated.", "ok");
           await loadProducts();
           renderProducts();
           renderPickList();
@@ -1121,8 +1176,18 @@
       const btn = document.getElementById("stockin-submit-btn");
       btn.disabled = true; btn.textContent = "RECORDING...";
       try {
-        await apiFetch("/api/documents/stock-in", { method: "POST", body: JSON.stringify({ items }) });
-        showStatus(statusEl, `Stock updated for ${items.length} item(s).`, "ok");
+        const res = await apiWriteOrQueue({
+          path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
+          onOffline: async () => {
+            for (const it of items) {
+              const prod = products.find((x) => x.id === it.product_id);
+              if (prod && prod.stock_qty != null) prod.stock_qty = (parseFloat(prod.stock_qty) || 0) + it.qty;
+              if (prod) prod.cost_price = it.unit_cost;
+            }
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? `Stock queued offline for ${items.length} item(s).` : `Stock updated for ${items.length} item(s).`, "ok");
         stockinRowsEl.innerHTML = "";
         addStockinRow();
         await loadProducts();
@@ -1137,7 +1202,15 @@
 
     async function toggleProductActive(p) {
       try {
-        await apiFetch(`/api/products/${p.id}`, { method: "PUT", body: JSON.stringify({ active: p.active ? 0 : 1 }) });
+        const next = p.active ? 0 : 1;
+        const res = await apiWriteOrQueue({
+          path: `/api/products/${p.id}`, method: "PUT", body: { active: next }, label: "Product toggle",
+          onOffline: async () => {
+            p.active = next;
+            await cachePut("/api/products", products);
+          },
+        });
+        if (res && res.offline) showStatus(statusEl, "Product status saved offline.", "ok");
         await loadProducts();
         renderProducts();
         renderPickList();
@@ -1156,7 +1229,7 @@
       const from = document.getElementById("h-from").value;
       const to = document.getElementById("h-to").value;
       try {
-        historyDocs = await apiFetch(`/api/documents?from=${from}&to=${to}&limit=200`);
+        historyDocs = await cachedGet(`/api/documents?from=${from}&to=${to}&limit=200`);
         renderHistory(historyDocs);
       } catch (e) {
         body.innerHTML = `<tr><td colspan="5" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
@@ -1209,7 +1282,7 @@
       const from = document.getElementById("r-from").value;
       const to = document.getElementById("r-to").value;
       try {
-        const data = await apiFetch(`/api/reports?from=${from}&to=${to}`);
+        const data = await cachedGet(`/api/reports?from=${from}&to=${to}`);
         renderReports(data);
       } catch (e) {
         showStatus(statusEl, e.message, "err");
@@ -1227,7 +1300,7 @@
         let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
         if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
         if (group) path += `&group=${encodeURIComponent(group)}`;
-        const rows = await apiFetch(path);
+        const rows = await cachedGet(path);
         renderTransactions(rows);
       } catch (e) {
         body.innerHTML = `<tr><td colspan="10" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
@@ -1306,9 +1379,15 @@
           paper_width: parseInt(document.getElementById("s-paper").value, 10),
           tax_rate: (parseFloat(document.getElementById("s-tax").value) || 0) / 100,
         };
-        await apiFetch("/api/shop/settings", { method: "PUT", body: JSON.stringify(body) });
+        const res = await apiWriteOrQueue({
+          path: "/api/shop/settings", method: "PUT", body, label: "Settings",
+          onOffline: async () => {
+            Object.assign(shop, body);
+            await cachePut("/api/shop/settings", shop);
+          },
+        });
         Object.assign(shop, body);
-        showStatus(statusEl, "Settings saved.", "ok");
+        showStatus(statusEl, res && res.offline ? "Settings saved offline." : "Settings saved.", "ok");
         updateLowStockPill();
       } catch (err) {
         showStatus(statusEl, err.message, "err");
