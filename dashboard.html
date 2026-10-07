@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS — Dashboard</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="app-nav">
+      <div class="nav-brand">
+        <span class="mark">✦ ✦ ✦</span>
+        <h1 id="shop-title">POS</h1>
+      </div>
+      <p class="nav-subtitle">Shop dashboard</p>
+      <span class="nav-pill zero" id="low-stock-pill" style="display:none;"></span>
+      <div class="nav-tabs">
+        <button class="nav-tab-btn tab-btn active" data-tab="bill" data-title="Bill" data-sub="Ring up a sale">Bill</button>
+        <button class="nav-tab-btn tab-btn" data-tab="products" data-title="Products" data-sub="Manage stock and pricing">Products</button>
+        <button class="nav-tab-btn tab-btn" data-tab="history" data-title="History" data-sub="Past sales, voids and edits">History</button>
+        <button class="nav-tab-btn tab-btn" data-tab="reports" data-title="Reports" data-sub="Revenue, profit and stock levels">Reports</button>
+        <button class="nav-tab-btn tab-btn" data-tab="settings" data-title="Settings" data-sub="Shop details and receipt setup">Settings</button>
+      </div>
+      <div class="nav-foot">POS · shop till</div>
+    </nav>
+
+    <header class="app-header">
+      <div class="app-header-title">
+        <h2 id="header-title">Bill</h2>
+        <p id="header-sub">Ring up a sale</p>
+      </div>
+      <div class="header-actions">
+        <span class="nav-pill urgent" id="offline-badge" style="display:none; margin:0;"></span>
+        <button type="button" class="btn-sm btn-ghost" id="sync-btn">SYNC</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+    <div id="status" class="status"></div>
+
+    <div id="password-panel" class="shop-card" style="display:none; flex-direction:column; align-items:stretch; gap:10px;">
+      <p class="shop-card-name" style="margin:0;">Set a password</p>
+      <p class="shop-card-meta">Change the password you log in with.</p>
+      <form id="password-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
+          <label for="new-password">NEW PASSWORD</label>
+          <input type="password" id="new-password" minlength="8" required autocomplete="new-password" placeholder="at least 8 characters">
+        </div>
+        <button type="submit" class="btn-sm btn-approve" id="password-save-btn">SAVE</button>
+      </form>
+    </div>
+
+    <!-- BILL -->
+    <section class="tab-panel active" id="tab-bill">
+      <div id="editing-banner" class="editing-banner" style="display:none;">
+        <span id="editing-banner-text"></span>
+        <button id="cancel-edit-btn" type="button">CANCEL EDIT</button>
+      </div>
+      <div class="bill-layout">
+        <div>
+          <div class="search-field">
+            <input type="text" id="product-search" placeholder="Search products, item code or group…">
+          </div>
+          <div class="group-filter" id="group-filter"></div>
+          <div class="pick-list" id="pick-list"><p class="loading-line">Loading…</p></div>
+        </div>
+        <div class="cart-box">
+          <div class="cart-box-head">
+            <p class="section-title cart-title">Sale</p>
+            <span class="cart-count-pill" id="cart-count-pill" style="display:none;">0</span>
+          </div>
+          <div class="cart-list" id="cart-list">
+            <p class="empty-cart">Tap a product to add it</p>
+          </div>
+
+          <div class="custom-item-row">
+            <input type="text" id="ci-name" class="ci-name" placeholder="custom item">
+            <input type="number" id="ci-price" class="ci-price" placeholder="price" step="0.01" min="0">
+            <input type="number" id="ci-qty" class="ci-qty" placeholder="qty" step="1" min="1" value="1">
+            <button type="button" class="btn-sm btn-ghost" id="add-custom-btn">ADD</button>
+          </div>
+
+          <div class="totals-box totals-detail">
+            <div class="totals-line"><span>Subtotal</span><span id="t-subtotal">0.00</span></div>
+            <div class="totals-line"><span>Discount</span><span id="t-discount">0.00</span></div>
+            <div class="totals-line" id="t-tax-line" style="display:none;"><span id="t-tax-label">Tax</span><span id="t-tax">0.00</span></div>
+          </div>
+          <div class="totals-box totals-pay">
+            <div class="totals-line grand"><span>Total</span><span id="t-total">0.00</span></div>
+            <div class="totals-line">
+              <span>Received</span>
+              <span><button type="button" class="received-btn" id="t-received-btn">0.00</button></span>
+            </div>
+            <div class="totals-line grand" id="balance-line">
+              <span id="balance-label">Balance due</span><span id="t-balance">0.00</span>
+            </div>
+          </div>
+          <p class="empty-line" id="received-warning" style="display:none; color:var(--rust); padding:4px 0 0;">Received amount can't be less than the total due.</p>
+
+          <button class="btn" id="checkout-btn">POST SALE</button>
+          <div id="last-sale-actions" style="display:none; margin-top:8px; text-align:center;">
+            <button class="btn-sm btn-ghost" id="print-last-btn">PRINT</button>
+            <button class="btn-sm btn-reject" id="void-last-btn">VOID</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUCTS -->
+    <section class="tab-panel" id="tab-products">
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Categories</p>
+        </div>
+        <form id="add-group-form" class="inline-add-form">
+          <div class="field" style="flex:1; min-width:140px; margin-bottom:0;">
+            <label for="ng-name">NEW CATEGORY</label>
+            <input type="text" id="ng-name" placeholder="e.g. Beverages" required>
+          </div>
+          <button type="submit" class="btn-sm btn-approve">ADD</button>
+        </form>
+        <div id="categories-list" class="category-chips"></div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Add product</p>
+        </div>
+        <form id="add-product-form" class="product-row-edit add-product-form">
+          <div class="field field-full"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
+          <div class="field"><label for="np-price">PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
+          <div class="field"><label for="np-cost">COST</label><input type="number" id="np-cost" step="0.01" min="0"></div>
+          <div class="field" id="np-stock-field"><label for="np-stock">STOCK</label><input type="number" id="np-stock" step="0.01" min="0"></div>
+          <div class="field" id="np-minqty-field"><label for="np-minqty">MIN QTY</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
+          <div class="field"><label for="np-discount">DISC %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
+          <div class="field field-full"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
+          <button type="submit" class="btn-sm btn-approve">ADD PRODUCT</button>
+        </form>
+        <p class="shop-card-meta help-desktop">Item codes are assigned automatically. Default discount % auto-fills on the bill; change per sale if needed.</p>
+      </div>
+
+      <div id="stockin-section" class="panel-block panel-block-accent" style="display:none;">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Stock in</p>
+        </div>
+        <div id="stockin-rows" class="stockin-rows"></div>
+        <div class="panel-block-actions">
+          <button type="button" class="btn-sm btn-ghost" id="stockin-add-row-btn">+ ITEM</button>
+          <button type="button" class="btn-sm btn-approve" id="stockin-submit-btn">RECORD ALL</button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
+          <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK IN</button>
+        </div>
+        <div id="product-list"><p class="loading-line">Loading…</p></div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="tab-panel" id="tab-history">
+      <div class="filter-row">
+        <div class="field"><label for="h-from">FROM</label><input type="date" id="h-from"></div>
+        <div class="field"><label for="h-to">TO</label><input type="date" id="h-to"></div>
+        <div class="field"><label for="h-search">SEARCH DOC #</label><input type="text" id="h-search" placeholder="e.g. 42" inputmode="numeric"></div>
+        <button class="btn-sm btn-ghost" id="h-apply-btn">APPLY</button>
+      </div>
+      <div class="mini-table-wrap">
+        <table class="mini-table">
+          <thead><tr><th>Doc #</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="5" class="loading-line">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="tab-panel" id="tab-reports">
+      <div class="filter-row">
+        <div class="field"><label for="r-from">FROM</label><input type="date" id="r-from"></div>
+        <div class="field"><label for="r-to">TO</label><input type="date" id="r-to"></div>
+        <button class="btn-sm btn-ghost" id="r-apply-btn">APPLY</button>
+      </div>
+      <div class="summary-cards" id="summary-cards"></div>
+
+      <p class="section-title">Top items</p>
+      <div class="mini-table-wrap">
+        <table class="mini-table">
+          <thead><tr><th>Item</th><th>Qty sold</th><th>Revenue</th><th class="keep-case">GP</th></tr></thead>
+          <tbody id="top-items-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-title" id="stock-section-title" style="display:none;">Stock levels</p>
+      <div class="mini-table-wrap" id="stock-table-wrap" style="display:none;">
+        <table class="mini-table">
+          <thead><tr><th>Code</th><th>Item</th><th>Stock</th><th>Min</th><th>Cost</th><th>Price</th></tr></thead>
+          <tbody id="stock-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-title">Item-wise transactions</p>
+      <div class="filter-row">
+        <div class="field"><label for="tx-item">ITEM</label><select id="tx-item"><option value="">All items</option></select></div>
+        <div class="field"><label for="tx-group">GROUP</label><select id="tx-group"><option value="">All groups</option></select></div>
+        <button class="btn-sm btn-ghost" id="tx-apply-btn">APPLY</button>
+      </div>
+      <p class="shop-card-meta" style="margin-bottom:10px;">Uses the same FROM/TO date range as above. Every sale line is listed separately, with its own cost and GP — voided lines show in rust and net themselves out.</p>
+      <div class="mini-table-wrap">
+        <table class="mini-table">
+          <thead><tr><th>Date</th><th>Doc #</th><th>Item</th><th>Group</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Sale amt</th><th>Cost</th><th class="keep-case">GP</th></tr></thead>
+          <tbody id="tx-body"><tr><td colspan="10" class="loading-line">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="tab-panel" id="tab-settings">
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Shop details</p>
+        </div>
+        <form id="settings-form">
+          <div class="field"><label for="s-legal-name">NAME ON RECEIPT</label><input type="text" id="s-legal-name"></div>
+          <div class="field"><label for="s-address">ADDRESS</label><input type="text" id="s-address"></div>
+          <div class="field"><label for="s-contact">CONTACT NUMBER</label><input type="text" id="s-contact"></div>
+          <div class="field"><label for="s-footer">RECEIPT FOOTER NOTE</label><input type="text" id="s-footer" placeholder="e.g. Thank you, come again"></div>
+          <div class="field">
+            <label for="s-paper">PAPER WIDTH</label>
+            <select id="s-paper">
+              <option value="80">80mm</option>
+              <option value="58">58mm</option>
+            </select>
+          </div>
+          <div class="field"><label for="s-tax">TAX RATE (%)</label><input type="number" id="s-tax" step="0.01" min="0"></div>
+          <button type="submit" class="btn" id="settings-save-btn">SAVE SETTINGS</button>
+        </form>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Account</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 12px;">Password and sign-out live here so the till header stays clear while billing.</p>
+        <div class="account-actions">
+          <button type="button" class="btn-sm btn-ghost" id="password-toggle-btn">SET PASSWORD</button>
+          <button type="button" class="btn-sm btn-reject" id="logout-btn">LOG OUT</button>
+        </div>
+      </div>
+    </section>
+    </main>
+  </div>
+
+  <div id="print-area"></div>
+
+  <div class="modal-overlay" id="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h3 id="modal-title">Edit</h3>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-sm btn-ghost" id="modal-cancel">CANCEL</button>
+        <button type="button" class="btn-sm btn-approve" id="modal-save">APPLY</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script src="/offline.js"></script>
+  <script>
+    if (!Auth.isLoggedIn() || Auth.role !== "shop") {
+      goTo("index.html");
+    }
+
+    const statusEl = document.getElementById("status");
+    let shop = null;
+    let products = [];
+    let cart = []; // { product_id, name, unit_price, cost_price, qty, discount_amount, stock_qty, custom }
+    let editingDocId = null;
+    let selectedGroup = ""; // "" = all categories, used to filter the Bill pick list
+    let itemGroups = []; // [{id, name}] — managed categories
+    let receivedManual = false; // true once the clerk sets their own received amount — stops auto-filling it from the total
+    let receivedAmount = 0;
+    let lastComputedTotal = 0;
+
+    function escapeHtml(str) {
+      const d = document.createElement("div");
+      d.textContent = str || "";
+      return d.innerHTML;
+    }
+
+    // ---------- generic popup modal ----------
+    // Used for anything that used to be a tiny inline number field on a cramped
+    // row (discount %, discount amount, received amount) — those are fiddly to
+    // tap and edit precisely on a phone, so they now open a proper full-size
+    // popup instead.
+    const modalOverlay = document.getElementById("modal-overlay");
+    const modalTitleEl = document.getElementById("modal-title");
+    const modalBodyEl = document.getElementById("modal-body");
+    const modalSaveBtn = document.getElementById("modal-save");
+    const modalCancelBtn = document.getElementById("modal-cancel");
+    let modalOnSave = null;
+
+    function openModal(title, bodyHtml, onSave) {
+      modalTitleEl.textContent = title;
+      modalBodyEl.innerHTML = bodyHtml;
+      modalOnSave = onSave;
+      modalOverlay.style.display = "flex";
+      const firstInput = modalBodyEl.querySelector("input");
+      if (firstInput) { firstInput.focus(); firstInput.select(); }
+    }
+    function closeModal() {
+      modalOverlay.style.display = "none";
+      modalOnSave = null;
+    }
+    modalCancelBtn.addEventListener("click", closeModal);
+    modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+    modalSaveBtn.addEventListener("click", () => { if (modalOnSave) modalOnSave(); });
+    modalBodyEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); if (modalOnSave) modalOnSave(); }
+      if (e.key === "Escape") closeModal();
+    });
+    function fmtMoney(n) { return (Number(n) || 0).toFixed(2); }
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso.replace(" ", "T") + "Z");
+      if (isNaN(d)) return iso;
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+        " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+    function isoDaysAgo(n) {
+      const d = new Date();
+      d.setDate(d.getDate() - n);
+      return d.toISOString().slice(0, 10);
+    }
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      Auth.clear();
+      goTo("index.html");
+    });
+
+    // ---------- tabs (explicit display for Android WebView) ----------
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTab(btn.dataset.tab);
+      });
+    });
+    function switchTab(name) {
+      if (!name) return;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        const on = p.id === "tab-" + name;
+        p.classList.toggle("active", on);
+        p.style.display = on ? "block" : "none";
+      });
+      const activeBtn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+      if (activeBtn) {
+        document.getElementById("header-title").textContent = activeBtn.dataset.title || activeBtn.textContent;
+        document.getElementById("header-sub").textContent = activeBtn.dataset.sub || "";
+      }
+      const main = document.querySelector(".app-main");
+      if (main) main.scrollTop = 0;
+      if (name === "history") loadHistory();
+      if (name === "reports") { loadReports(); loadTransactions(); }
+    }
+
+    // ---------- set password panel (same pattern as admin.html) ----------
+    const passwordPanel = document.getElementById("password-panel");
+    document.getElementById("password-toggle-btn").addEventListener("click", () => {
+      passwordPanel.style.display = passwordPanel.style.display === "none" ? "flex" : "none";
+    });
+    document.getElementById("password-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("password-save-btn");
+      const password = document.getElementById("new-password").value;
+      btn.disabled = true; btn.textContent = "SAVING...";
+      try {
+        await apiFetch("/api/auth/set-password", { method: "POST", body: JSON.stringify({ password }) });
+        showStatus(statusEl, "Password saved.", "ok");
+        e.target.reset();
+        passwordPanel.style.display = "none";
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "SAVE";
+      }
+    });
+
+    // ---------- init ----------
+    async function init() {
+      try {
+        shop = await cachedGet("/api/shop/settings");
+        document.getElementById("shop-title").textContent = shop.name;
+        document.getElementById("np-stock-field").style.display = shop.tracks_inventory ? "" : "none";
+        document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
+        document.getElementById("stockin-toggle-btn").style.display = shop.tracks_inventory ? "inline-block" : "none";
+        fillSettingsForm();
+        await loadItemGroups();
+        await loadProducts();
+        renderPickList();
+        renderProducts();
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+        if (e.message === "unauthorized") { Auth.clear(); setTimeout(() => (goTo("index.html")), 1200); }
+      }
+      const from30 = isoDaysAgo(30);
+      const today = isoDaysAgo(0);
+      document.getElementById("h-from").value = from30;
+      document.getElementById("h-to").value = today;
+      document.getElementById("r-from").value = from30;
+      document.getElementById("r-to").value = today;
+    }
+
+    // ================= BILL =================
+    document.getElementById("product-search").addEventListener("input", (e) => renderPickList(e.target.value));
+
+    function renderPickList(filter) {
+      const listEl = document.getElementById("pick-list");
+      const q = (filter || "").trim().toLowerCase();
+      const shown = products.filter((p) => {
+        if (!p.active) return false;
+        if (selectedGroup && (p.item_group || "") !== selectedGroup) return false;
+        if (!q) return true;
+        return p.name.toLowerCase().includes(q) || (p.item_code || "").includes(q) || (p.item_group || "").toLowerCase().includes(q);
+      });
+      listEl.innerHTML = "";
+      if (!shown.length) {
+        listEl.innerHTML = '<p class="empty-line">No products found.</p>';
+        return;
+      }
+      shown.forEach((p) => {
+        const outOfStock = shop.tracks_inventory && p.stock_qty !== null && p.stock_qty <= 0;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "pick-item" + (outOfStock ? " out-of-stock" : "");
+        const bits = [`#${escapeHtml(p.item_code)}`];
+        if (shop.tracks_inventory && p.stock_qty !== null) bits.push(`${p.stock_qty} in stock`);
+        if (p.discount_pct) bits.push(`${p.discount_pct}% off`);
+        if (p.item_group) bits.push(escapeHtml(p.item_group));
+        btn.innerHTML = `<span class="pick-item-name">${escapeHtml(p.name)}</span><span class="pick-item-price">${fmtMoney(p.unit_price)}</span><span class="pick-item-meta">${bits.join(" · ")}</span>`;
+        btn.addEventListener("click", () => { if (!outOfStock) addToCart(p); });
+        listEl.appendChild(btn);
+      });
+    }
+
+    function autoDiscount(unitPrice, qty, discountPct) {
+      return Math.round(unitPrice * qty * (discountPct || 0) / 100 * 100) / 100;
+    }
+
+    function addToCart(p) {
+      const existing = cart.find((c) => c.product_id === p.id);
+      if (existing) {
+        existing.qty += 1;
+        if (!existing.discount_manual) existing.discount_amount = autoDiscount(existing.unit_price, existing.qty, existing.discount_pct);
+      } else {
+        const discountPct = p.discount_pct || 0;
+        cart.push({
+          product_id: p.id,
+          name: p.name,
+          unit_price: p.unit_price,
+          qty: 1,
+          discount_pct: discountPct,
+          discount_amount: autoDiscount(p.unit_price, 1, discountPct),
+          discount_manual: false,
+          stock_qty: p.stock_qty,
+          custom: false,
+        });
+      }
+      renderCart();
+    }
+
+    document.getElementById("add-custom-btn").addEventListener("click", () => {
+      const name = document.getElementById("ci-name").value.trim();
+      const price = parseFloat(document.getElementById("ci-price").value);
+      const qty = parseFloat(document.getElementById("ci-qty").value) || 1;
+      if (!name || isNaN(price)) { showStatus(statusEl, "Enter a name and price for the custom item.", "err"); return; }
+      cart.push({ product_id: null, name, unit_price: price, qty, discount_pct: 0, discount_amount: 0, discount_manual: false, stock_qty: null, custom: true });
+      document.getElementById("ci-name").value = "";
+      document.getElementById("ci-price").value = "";
+      document.getElementById("ci-qty").value = "1";
+      renderCart();
+    });
+
+    function renderCart() {
+      const listEl = document.getElementById("cart-list");
+      const countPill = document.getElementById("cart-count-pill");
+      if (countPill) {
+        if (cart.length) {
+          countPill.textContent = String(cart.length);
+          countPill.style.display = "inline-flex";
+        } else {
+          countPill.style.display = "none";
+        }
+      }
+      listEl.innerHTML = "";
+      if (!cart.length) {
+        listEl.innerHTML = '<p class="empty-cart">Tap a product to add it</p>';
+      } else {
+        cart.forEach((item, i) => {
+          const row = document.createElement("div");
+          row.className = "cart-row";
+          const lineTotal = item.qty * item.unit_price - (item.discount_amount || 0);
+          const discSummary = item.discount_amount ? `${item.discount_pct ? item.discount_pct + "% · " : ""}${fmtMoney(item.discount_amount)} off` : "add discount";
+          row.innerHTML = `
+            <div style="flex:1;">
+              <p class="cart-row-name">${escapeHtml(item.name)}</p>
+              <div class="cart-row-controls">
+                <input type="number" class="qty-input" data-i="${i}" data-field="qty" value="${item.qty}" min="0" step="any">
+                ×
+                <input type="number" class="price-input" data-i="${i}" data-field="unit_price" value="${item.unit_price}" step="0.01" ${item.custom ? "" : "readonly"}>
+                <button type="button" class="disc-btn" data-i="${i}">${discSummary}</button>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="cart-row-total">${fmtMoney(lineTotal)}</div>
+              <button type="button" class="cart-row-remove" data-i="${i}">✕</button>
+            </div>
+          `;
+          listEl.appendChild(row);
+        });
+        listEl.querySelectorAll(".qty-input, .price-input").forEach((inp) => {
+          inp.addEventListener("input", (e) => {
+            const i = parseInt(e.target.dataset.i, 10);
+            const field = e.target.dataset.field;
+            const val = parseFloat(e.target.value);
+            cart[i][field] = isNaN(val) ? 0 : val;
+            // Qty/price changed — re-derive the discount amount from the item's default %,
+            // unless the clerk has already typed a custom discount for this line.
+            if (!cart[i].discount_manual) {
+              cart[i].discount_amount = autoDiscount(cart[i].unit_price, cart[i].qty, cart[i].discount_pct);
+            }
+            renderCart();
+          });
+        });
+        listEl.querySelectorAll(".disc-btn").forEach((btn) => {
+          btn.addEventListener("click", () => openDiscountModal(parseInt(btn.dataset.i, 10)));
+        });
+        listEl.querySelectorAll(".cart-row-remove").forEach((b) => {
+          b.addEventListener("click", () => { cart.splice(parseInt(b.dataset.i, 10), 1); renderCart(); });
+        });
+      }
+      computeTotals();
+    }
+
+    // Discount entry pops up in its own view instead of two cramped inline fields —
+    // easier to tap and edit precisely on a phone. The % and amount fields inside
+    // stay linked to each other exactly like before; only the container changed.
+    function openDiscountModal(i) {
+      const item = cart[i];
+      const body = `
+        <div class="field">
+          <label for="modal-disc-pct">Discount %</label>
+          <input type="number" id="modal-disc-pct" min="0" max="100" step="0.01" value="${item.discount_pct || 0}">
+        </div>
+        <div class="field">
+          <label for="modal-disc-amt">Discount amount</label>
+          <input type="number" id="modal-disc-amt" min="0" step="0.01" value="${item.discount_amount || 0}">
+        </div>
+      `;
+      openModal(`Discount — ${item.name}`, body, () => {
+        const pctInput = document.getElementById("modal-disc-pct");
+        const amtInput = document.getElementById("modal-disc-amt");
+        let pct = parseFloat(pctInput.value);
+        let amt = parseFloat(amtInput.value);
+        if (isNaN(pct)) pct = 0;
+        if (isNaN(amt)) amt = 0;
+        pct = Math.max(0, Math.min(100, pct));
+        item.discount_pct = pct;
+        item.discount_amount = amt;
+        item.discount_manual = true;
+        closeModal();
+        renderCart();
+      });
+      // Keep the two fields linked live while the modal is open, same relationship
+      // as before: editing % recalculates amount, editing amount recalculates %.
+      const pctInput = document.getElementById("modal-disc-pct");
+      const amtInput = document.getElementById("modal-disc-amt");
+      pctInput.addEventListener("input", () => {
+        let pct = parseFloat(pctInput.value);
+        if (isNaN(pct)) pct = 0;
+        amtInput.value = autoDiscount(item.unit_price, item.qty, pct).toFixed(2);
+      });
+      amtInput.addEventListener("input", () => {
+        let amt = parseFloat(amtInput.value);
+        if (isNaN(amt)) amt = 0;
+        const base = item.qty * item.unit_price;
+        pctInput.value = base > 0 ? (Math.round((amt / base) * 10000) / 100).toFixed(2) : 0;
+      });
+    }
+
+    function computeTotals() {
+      const subtotal = cart.reduce((s, i) => s + i.qty * i.unit_price, 0);
+      const discount = cart.reduce((s, i) => s + (i.discount_amount || 0), 0);
+      const taxRate = (shop && shop.tax_rate) || 0;
+      const taxable = subtotal - discount;
+      const tax = taxRate ? taxable * taxRate : 0;
+      const total = taxable + tax;
+      document.getElementById("t-subtotal").textContent = fmtMoney(subtotal);
+      document.getElementById("t-discount").textContent = fmtMoney(discount);
+      const taxLine = document.getElementById("t-tax-line");
+      if (taxRate) {
+        taxLine.style.display = "flex";
+        document.getElementById("t-tax-label").textContent = `Tax (${(taxRate * 100).toFixed(1)}%)`;
+        document.getElementById("t-tax").textContent = fmtMoney(tax);
+      } else {
+        taxLine.style.display = "none";
+      }
+      document.getElementById("t-total").textContent = fmtMoney(total);
+      lastComputedTotal = total;
+
+      if (!receivedManual) receivedAmount = total;
+      document.getElementById("t-received-btn").textContent = fmtMoney(receivedAmount);
+      updateBalanceDisplay(total);
+
+      return { subtotal, discount, tax, total };
+    }
+
+    function updateBalanceDisplay(total) {
+      const balance = receivedAmount - total;
+      const balanceLine = document.getElementById("balance-line");
+      const warning = document.getElementById("received-warning");
+      document.getElementById("balance-label").textContent = balance < 0 ? "Balance due" : "Change";
+      document.getElementById("t-balance").textContent = fmtMoney(Math.abs(balance));
+      balanceLine.classList.toggle("short", balance < -0.004);
+      balanceLine.classList.toggle("over", balance >= -0.004);
+      warning.style.display = balance < -0.004 ? "block" : "none";
+      return balance;
+    }
+
+    // Received amount pops up in its own view too, same reasoning as the discount
+    // popup — a fiddly inline field is hard to tap/edit precisely on a phone.
+    document.getElementById("t-received-btn").addEventListener("click", () => {
+      const body = `
+        <div class="field">
+          <label for="modal-received">Amount received</label>
+          <input type="number" id="modal-received" min="0" step="0.01" value="${receivedAmount.toFixed(2)}">
+        </div>
+      `;
+      openModal("Amount received", body, () => {
+        const val = parseFloat(document.getElementById("modal-received").value);
+        receivedAmount = isNaN(val) ? 0 : val;
+        receivedManual = true;
+        closeModal();
+        updateBalanceDisplay(lastComputedTotal);
+        document.getElementById("t-received-btn").textContent = fmtMoney(receivedAmount);
+      });
+    });
+
+    document.getElementById("checkout-btn").addEventListener("click", submitSale);
+    async function submitSale() {
+      if (!cart.length) { showStatus(statusEl, "Add at least one item first.", "err"); return; }
+      const { total } = computeTotals();
+      if (receivedAmount - total < -0.004) {
+        showStatus(statusEl, "Received amount can't be less than the total due.", "err");
+        document.getElementById("received-warning").style.display = "block";
+        return;
+      }
+      const btn = document.getElementById("checkout-btn");
+      btn.disabled = true; btn.textContent = editingDocId ? "SAVING..." : "POSTING...";
+      const items = cart.map((i) => ({
+        product_id: i.product_id,
+        name: i.name,
+        qty: i.qty,
+        unit_price: i.unit_price,
+        discount_amount: i.discount_amount || 0,
+      }));
+      const clientRef = newClientRef();
+      const createdAt = new Date().toISOString();
+      try {
+        if (!editingDocId && !navigator.onLine) throw new TypeError("offline");
+        const path = editingDocId ? `/api/documents/${editingDocId}/edit` : "/api/documents/sale";
+        const payload = { items, received_amount: receivedAmount };
+        if (!editingDocId) { payload.client_ref = clientRef; payload.created_at = createdAt; }
+        const result = await apiFetch(path, { method: "POST", body: JSON.stringify(payload) });
+        showStatus(statusEl, editingDocId ? "Sale updated." : `Sale posted — doc #${result.docNumber}.`, "ok");
+        cart = [];
+        editingDocId = null;
+        receivedManual = false;
+        document.getElementById("editing-banner").style.display = "none";
+        renderCart();
+        const lastActions = document.getElementById("last-sale-actions");
+        lastActions.style.display = "block";
+        document.getElementById("void-last-btn").style.display = "";
+        document.getElementById("print-last-btn").onclick = () => printReceipt(result.documentId);
+        document.getElementById("void-last-btn").onclick = async () => {
+          if (!confirm(`Void sale #${result.docNumber}? This reverses the stock and revenue effect.`)) return;
+          try {
+            await apiFetch(`/api/documents/${result.documentId}/void`, { method: "POST" });
+            showStatus(statusEl, `Sale #${result.docNumber} voided.`, "ok");
+            lastActions.style.display = "none";
+            loadProducts();
+          } catch (err) {
+            showStatus(statusEl, err.message, "err");
+          }
+        };
+        loadProducts();
+      } catch (e) {
+        if (!editingDocId && isNetworkError(e)) {
+          await saveSaleOffline({ clientRef, createdAt, items, total });
+        } else {
+          showStatus(statusEl, e.message, "err");
+        }
+      } finally {
+        btn.disabled = false; btn.textContent = "POST SALE";
+      }
+    }
+
+    // ---- offline: queue the sale on the device; flushSales() (offline.js) posts it when back online ----
+    let offlineSeq = parseInt(localStorage.getItem("pos_offline_seq") || "0", 10);
+    async function saveSaleOffline({ clientRef, createdAt, items, total }) {
+      const subtotal = items.reduce((s, i) => s + i.qty * i.unit_price, 0);
+      const discount = items.reduce((s, i) => s + (i.discount_amount || 0), 0);
+      const tax = total - (subtotal - discount);
+      await queueSale({ client_ref: clientRef, items, received_amount: receivedAmount, created_at: createdAt, total });
+
+      // reflect the sale in the local stock numbers so the pick list stays sensible
+      items.forEach((it) => {
+        const p = products.find((x) => x.id === it.product_id);
+        if (p && p.stock_qty !== null && shop.tracks_inventory) p.stock_qty -= it.qty;
+      });
+
+      offlineSeq += 1;
+      localStorage.setItem("pos_offline_seq", String(offlineSeq));
+      const receipt = {
+        shop, status: "ORIGINAL", is_reprint: false, print_count: 1,
+        doc: { doc_number: "OFF-" + offlineSeq, doc_type: "SALE", created_at: createdAt.replace("T", " ").slice(0, 19),
+               subtotal, discount_amount: discount, tax_amount: tax, total, received_amount: receivedAmount },
+        items: items.map((i) => ({ ...i, line_total: i.qty * i.unit_price - (i.discount_amount || 0), item_code: (products.find((p) => p.id === i.product_id) || {}).item_code })),
+      };
+      showStatus(statusEl, `Saved offline as OFF-${offlineSeq} — it will post automatically when you're back online.`, "ok");
+      cart = []; editingDocId = null; receivedManual = false;
+      renderCart(); renderPickList(document.getElementById("product-search").value); updateLowStockPill();
+      const lastActions = document.getElementById("last-sale-actions");
+      lastActions.style.display = "block";
+      document.getElementById("void-last-btn").style.display = "none"; // can't void what the server hasn't seen yet
+      document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); setTimeout(() => window.print(), 50); };
+    }
+    window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
+    window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
+    window.onOfflineSynced = (n) => { /* toast already shown by offline.js */ };
+
+    /** Try online write; if offline, queue and optionally apply local optimistic update. */
+    async function apiWriteOrQueue({ path, method, body, label, onOffline }) {
+      try {
+        if (!navigator.onLine) throw new TypeError("offline");
+        return await apiFetch(path, { method, body: JSON.stringify(body) });
+      } catch (e) {
+        if (!isNetworkError(e)) throw e;
+        await queueWrite({ path, method: method || "POST", body, label: label || "Change" });
+        if (typeof onOffline === "function") await onOffline();
+        return { offline: true };
+      }
+    }
+
+    document.getElementById("cancel-edit-btn").addEventListener("click", () => {
+      editingDocId = null;
+      cart = [];
+      receivedManual = false;
+      renderCart();
+      document.getElementById("editing-banner").style.display = "none";
+    });
+
+    async function startEdit(docId) {
+      try {
+        const data = await apiFetch(`/api/documents/${docId}`);
+        if (data.status !== "ORIGINAL" || data.doc.doc_type !== "SALE") {
+          showStatus(statusEl, "Only an original, unvoided sale can be edited.", "err");
+          return;
+        }
+        cart = data.items.map((it) => ({
+          product_id: it.product_id,
+          name: it.name,
+          unit_price: it.unit_price,
+          qty: it.qty,
+          discount_pct: 0,
+          discount_amount: it.discount_amount,
+          discount_manual: true, // these are the sale's original amounts — don't overwrite them from a product's default %
+          custom: !it.product_id,
+        }));
+        editingDocId = docId;
+        receivedManual = true;
+        receivedAmount = data.doc.received_amount ?? data.doc.total;
+        document.getElementById("t-received-btn").textContent = fmtMoney(receivedAmount);
+        document.getElementById("editing-banner-text").textContent = `Editing sale #${data.doc.doc_number} — posting will void the original and create a corrected sale.`;
+        document.getElementById("editing-banner").style.display = "flex";
+        renderCart();
+        switchTab("bill");
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+
+    // ---------- printing ----------
+    async function printReceipt(docId) {
+      try {
+        const data = await apiFetch(`/api/documents/${docId}/print`);
+        renderPrintArea(data);
+        setTimeout(() => window.print(), 50);
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+    function renderPrintArea(data) {
+      const narrow = data.shop.paper_width === 58;
+      const itemsHtml = data.items.map((it) => `
+        <tr><td colspan="2">${it.item_code ? `#${escapeHtml(it.item_code)} · ` : ""}${escapeHtml(it.name)}</td></tr>
+        <tr><td>${it.qty} × ${fmtMoney(it.unit_price)}</td><td class="pr-right">${fmtMoney(it.line_total)}</td></tr>
+        ${it.discount_amount ? `<tr><td class="pr-disc" colspan="2">less discount ${fmtMoney(it.discount_amount)}</td></tr>` : ""}
+      `).join("");
+      const received = data.doc.received_amount;
+      const hasPayment = data.doc.doc_type === "SALE" && received !== null && received !== undefined;
+      const balance = hasPayment ? received - data.doc.total : 0;
+      document.getElementById("print-area").innerHTML = `
+        <div class="print-receipt${narrow ? " narrow" : ""}">
+          <h2>${escapeHtml(data.shop.legal_name || "")}</h2>
+          <div class="pr-meta">${escapeHtml(data.shop.address || "")}${data.shop.contact_number ? " · " + escapeHtml(data.shop.contact_number) : ""}</div>
+          ${data.status !== "ORIGINAL" ? `<div class="pr-status">${data.status}</div>` : ""}
+          <div class="pr-meta">Doc #${data.doc.doc_number} · ${fmtDate(data.doc.created_at)}</div>
+          <hr>
+          <table>${itemsHtml}</table>
+          <hr>
+          <table>
+            <tr><td>Subtotal</td><td class="pr-right">${fmtMoney(data.doc.subtotal)}</td></tr>
+            ${data.doc.discount_amount ? `<tr><td>Discount</td><td class="pr-right">-${fmtMoney(data.doc.discount_amount)}</td></tr>` : ""}
+            ${data.doc.tax_amount ? `<tr><td>Tax</td><td class="pr-right">${fmtMoney(data.doc.tax_amount)}</td></tr>` : ""}
+            <tr><td><strong>Total</strong></td><td class="pr-right"><strong>${fmtMoney(data.doc.total)}</strong></td></tr>
+            ${hasPayment ? `<tr><td>Received</td><td class="pr-right">${fmtMoney(received)}</td></tr>` : ""}
+            ${hasPayment ? `<tr><td>${balance < 0 ? "Balance due" : "Change"}</td><td class="pr-right">${fmtMoney(Math.abs(balance))}</td></tr>` : ""}
+          </table>
+          <hr>
+          ${data.shop.footer_note ? `<div class="pr-meta">${escapeHtml(data.shop.footer_note)}</div>` : ""}
+          ${data.is_reprint ? `<div class="pr-meta">Reprint #${data.print_count}</div>` : ""}
+        </div>
+      `;
+    }
+
+    // ================= PRODUCTS =================
+    async function loadProducts() {
+      products = await cachedGet("/api/products");
+      updateLowStockPill();
+      refreshTxItemOptions();
+    }
+
+    // ---------- item groups / categories (managed via /api/item-groups) ----------
+    async function loadItemGroups() {
+      itemGroups = await cachedGet("/api/item-groups");
+      renderGroupControls();
+    }
+
+    function groupOptionsHtml(selected) {
+      return '<option value="">— no category —</option>' + itemGroups.map((g) => `<option value="${escapeHtml(g.name)}" ${selected === g.name ? "selected" : ""}>${escapeHtml(g.name)}</option>`).join("");
+    }
+
+    function refreshTxItemOptions() {
+      const txItemSel = document.getElementById("tx-item");
+      if (!txItemSel) return;
+      const current = txItemSel.value;
+      txItemSel.innerHTML = '<option value="">All items</option>' + products.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}${p.item_code ? " (#" + escapeHtml(p.item_code) + ")" : ""}</option>`).join("");
+      if ([...txItemSel.options].some((o) => o.value === current)) txItemSel.value = current;
+    }
+
+    function renderGroupControls() {
+      // Add-product form
+      const npGroup = document.getElementById("np-group");
+      if (npGroup) {
+        const current = npGroup.value;
+        npGroup.innerHTML = groupOptionsHtml("");
+        if ([...npGroup.options].some((o) => o.value === current)) npGroup.value = current;
+      }
+
+      // Bill quick-filter chips
+      const chipsEl = document.getElementById("group-filter");
+      if (chipsEl) {
+        if (!itemGroups.length) {
+          chipsEl.innerHTML = "";
+        } else {
+          chipsEl.innerHTML = [`<button type="button" class="group-chip${selectedGroup === "" ? " active" : ""}" data-group="">ALL</button>`]
+            .concat(itemGroups.map((g) => `<button type="button" class="group-chip${selectedGroup === g.name ? " active" : ""}" data-group="${escapeHtml(g.name)}">${escapeHtml(g.name)}</button>`))
+            .join("");
+          chipsEl.querySelectorAll(".group-chip").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              selectedGroup = btn.dataset.group;
+              renderGroupControls(); // re-highlight the active chip
+              renderPickList(document.getElementById("product-search").value);
+            });
+          });
+        }
+      }
+
+      // Reports > item-wise transactions filter
+      const txGroupSel = document.getElementById("tx-group");
+      if (txGroupSel) {
+        const current = txGroupSel.value;
+        txGroupSel.innerHTML = '<option value="">All categories</option>' + itemGroups.map((g) => `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)}</option>`).join("");
+        if ([...txGroupSel.options].some((o) => o.value === current)) txGroupSel.value = current;
+      }
+
+      renderCategoriesList();
+    }
+
+    function renderCategoriesList() {
+      const listEl = document.getElementById("categories-list");
+      if (!listEl) return;
+      listEl.innerHTML = "";
+      listEl.className = "category-chips";
+      if (!itemGroups.length) {
+        listEl.innerHTML = '<p class="empty-line">No categories yet — add one above.</p>';
+        return;
+      }
+      itemGroups.forEach((g) => {
+        const chip = document.createElement("div");
+        chip.className = "category-chip";
+        chip.innerHTML = `
+          <span class="cat-name">${escapeHtml(g.name)}</span>
+          <span class="cat-actions">
+            <button type="button" data-action="rename" title="Rename">EDIT</button>
+            <button type="button" class="cat-delete" data-action="delete" title="Delete">✕</button>
+          </span>
+        `;
+        chip.querySelector('[data-action="rename"]').addEventListener("click", () => toggleRenameGroup(chip, g));
+        chip.querySelector('[data-action="delete"]').addEventListener("click", () => deleteGroup(g));
+        listEl.appendChild(chip);
+      });
+    }
+
+    function toggleRenameGroup(row, g) {
+      const existing = row.querySelector(".category-rename-row");
+      if (existing) { existing.remove(); return; }
+      const form = document.createElement("form");
+      form.className = "category-rename-row";
+      form.innerHTML = `
+        <input type="text" name="name" value="${escapeHtml(g.name)}" required>
+        <button type="submit" class="btn-sm btn-approve">SAVE</button>
+      `;
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const newName = form.name.value.trim();
+        if (!newName) return;
+        try {
+          const res = await apiWriteOrQueue({
+            path: `/api/item-groups/${g.id}`, method: "PUT", body: { name: newName }, label: "Category rename",
+            onOffline: async () => {
+              g.name = newName;
+              if (selectedGroup === g.name) selectedGroup = newName;
+              await cachePut("/api/item-groups", itemGroups);
+            },
+          });
+          showStatus(statusEl, res && res.offline ? "Category renamed (offline)." : "Category renamed.", "ok");
+          if (selectedGroup === g.name) selectedGroup = newName;
+          await loadItemGroups();
+          await loadProducts();
+          renderProducts();
+          renderPickList();
+        } catch (err) {
+          showStatus(statusEl, err.message, "err");
+        }
+      });
+      row.appendChild(form);
+    }
+
+    async function deleteGroup(g) {
+      if (!confirm(`Delete category "${g.name}"? Products using it become uncategorized — nothing else about them changes.`)) return;
+      try {
+        const res = await apiWriteOrQueue({
+          path: `/api/item-groups/${g.id}`, method: "DELETE", body: {}, label: "Category delete",
+          onOffline: async () => {
+            itemGroups = itemGroups.filter((x) => x.id !== g.id);
+            await cachePut("/api/item-groups", itemGroups);
+            if (selectedGroup === g.name) selectedGroup = "";
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Category deleted (offline)." : "Category deleted.", "ok");
+        if (selectedGroup === g.name) selectedGroup = "";
+        await loadItemGroups();
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    }
+
+    document.getElementById("add-group-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const nameInput = document.getElementById("ng-name");
+      const name = nameInput.value.trim();
+      if (!name) return;
+      try {
+        const res = await apiWriteOrQueue({
+          path: "/api/item-groups", method: "POST", body: { name }, label: "Category add",
+          onOffline: async () => {
+            itemGroups = itemGroups.concat([{ id: "local-" + Date.now(), name }]);
+            await cachePut("/api/item-groups", itemGroups);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Category added (offline)." : "Category added.", "ok");
+        nameInput.value = "";
+        await loadItemGroups();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    });
+    function updateLowStockPill() {
+      const pill = document.getElementById("low-stock-pill");
+      if (!shop || !shop.tracks_inventory) { pill.style.display = "none"; return; }
+      const low = products.filter((p) => p.active && p.stock_qty !== null && p.stock_qty <= (p.low_stock_threshold ?? 5));
+      if (low.length) {
+        pill.textContent = `${low.length} LOW STOCK`;
+        pill.classList.remove("zero");
+        pill.style.display = "inline-block";
+      } else {
+        pill.style.display = "none";
+      }
+    }
+
+    document.getElementById("add-product-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        name: document.getElementById("np-name").value.trim(),
+        unit_price: parseFloat(document.getElementById("np-price").value) || 0,
+        cost_price: parseFloat(document.getElementById("np-cost").value) || 0,
+        discount_pct: parseFloat(document.getElementById("np-discount").value) || 0,
+        item_group: document.getElementById("np-group").value.trim() || null,
+      };
+      if (shop.tracks_inventory) {
+        body.stock_qty = parseFloat(document.getElementById("np-stock").value) || 0;
+        const minQty = document.getElementById("np-minqty").value;
+        if (minQty !== "") body.low_stock_threshold = parseInt(minQty, 10);
+      }
+      try {
+        const res = await apiWriteOrQueue({
+          path: "/api/products", method: "POST", body, label: "Product add",
+          onOffline: async () => {
+            const local = { id: "local-" + Date.now(), ...body, active: 1, item_code: body.item_code || null };
+            products = products.concat([local]);
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Product added (offline)." : "Product added.", "ok");
+        e.target.reset();
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    });
+
+    function renderProducts() {
+      const listEl = document.getElementById("product-list");
+      listEl.innerHTML = "";
+      if (!products.length) {
+        listEl.innerHTML = '<p class="empty-line">No products yet.</p>';
+        return;
+      }
+      products.forEach((p) => {
+        const row = document.createElement("div");
+        row.className = "product-row" + (p.active ? "" : " inactive");
+        const discBit = p.discount_pct ? `<span class="sep">·</span>disc ${p.discount_pct}%` : "";
+        const groupBit = p.item_group ? `<span class="sep">·</span>${escapeHtml(p.item_group)}` : "";
+        const meta = shop.tracks_inventory && p.stock_qty !== null
+          ? `code #${escapeHtml(p.item_code)}<span class="sep">·</span>price ${fmtMoney(p.unit_price)}<span class="sep">·</span>cost ${fmtMoney(p.cost_price)}<span class="sep">·</span>${p.stock_qty} in stock<span class="sep">·</span>min ${p.low_stock_threshold ?? 5}${discBit}${groupBit}`
+          : `code #${escapeHtml(p.item_code)}<span class="sep">·</span>price ${fmtMoney(p.unit_price)}<span class="sep">·</span>cost ${fmtMoney(p.cost_price)}${discBit}${groupBit}`;
+        row.innerHTML = `
+          <div>
+            <p class="shop-card-name" style="margin:0;">${escapeHtml(p.name)} ${p.active ? "" : '<span class="stamp rejected">INACTIVE</span>'}</p>
+            <p class="shop-card-meta">${meta}</p>
+          </div>
+          <div class="product-row-actions">
+            <button class="btn-sm btn-ghost" data-action="edit">EDIT</button>
+            ${shop.tracks_inventory ? '<button class="btn-sm btn-ghost" data-action="stockin">STOCK IN</button>' : ""}
+            <button class="btn-sm ${p.active ? "btn-reject" : "btn-approve"}" data-action="toggle">${p.active ? "DEACTIVATE" : "ACTIVATE"}</button>
+            <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
+          </div>
+        `;
+        row.querySelector('[data-action="edit"]').addEventListener("click", () => toggleEditRow(row, p));
+        if (shop.tracks_inventory) row.querySelector('[data-action="stockin"]').addEventListener("click", () => toggleStockInRow(row, p));
+        row.querySelector('[data-action="toggle"]').addEventListener("click", () => toggleProductActive(p));
+        row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteProduct(p));
+        listEl.appendChild(row);
+      });
+    }
+
+    function toggleEditRow(row, p) {
+      const existing = row.querySelector(".product-row-edit");
+      if (existing) { existing.remove(); return; }
+      const form = document.createElement("form");
+      form.className = "product-row-edit";
+      form.innerHTML = `
+        <div class="field field-full"><label>NAME</label><input type="text" name="name" value="${escapeHtml(p.name)}"></div>
+        <div class="field"><label>PRICE</label><input type="number" name="unit_price" step="0.01" value="${p.unit_price}"></div>
+        <div class="field"><label>COST</label><input type="number" name="cost_price" step="0.01" value="${p.cost_price}"></div>
+        ${shop.tracks_inventory ? `<div class="field"><label>MIN QTY</label><input type="number" name="low_stock_threshold" step="1" min="0" value="${p.low_stock_threshold ?? 5}"></div>` : ""}
+        <div class="field" style="flex:1 1 150px;"><label>DEFAULT DISCOUNT %</label><input type="number" name="discount_pct" step="0.01" min="0" max="100" value="${p.discount_pct || 0}"></div>
+        <div class="field field-full"><label>CATEGORY</label><select name="item_group">${groupOptionsHtml(p.item_group || "")}</select></div>
+        <button type="submit" class="btn-sm btn-approve">SAVE</button>
+      `;
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const payload = {
+            name: form.name.value.trim(),
+            unit_price: parseFloat(form.unit_price.value) || 0,
+            cost_price: parseFloat(form.cost_price.value) || 0,
+            discount_pct: parseFloat(form.discount_pct.value) || 0,
+            item_group: form.item_group.value || null,
+          };
+          if (shop.tracks_inventory) payload.low_stock_threshold = parseInt(form.low_stock_threshold.value, 10) || 0;
+          const res = await apiWriteOrQueue({
+            path: `/api/products/${p.id}`, method: "PUT", body: payload, label: "Product update",
+            onOffline: async () => {
+              Object.assign(p, payload);
+              await cachePut("/api/products", products);
+            },
+          });
+          showStatus(statusEl, res && res.offline ? "Product updated (offline)." : "Product updated.", "ok");
+          await loadProducts();
+          renderProducts();
+          renderPickList();
+        } catch (err) {
+          showStatus(statusEl, err.message, "err");
+        }
+      });
+      row.appendChild(form);
+    }
+
+    function toggleStockInRow(row, p) {
+      const existing = row.querySelector(".stock-in-row");
+      if (existing) { existing.remove(); return; }
+      const form = document.createElement("form");
+      form.className = "stock-in-row";
+      form.innerHTML = `
+        <div class="field"><label>QTY RECEIVED</label><input type="number" name="qty" step="0.01" min="0" required></div>
+        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" value="${p.cost_price}" required></div>
+        <button type="submit" class="btn-sm btn-approve">RECORD</button>
+      `;
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const qty = parseFloat(form.qty.value);
+        const unit_cost = parseFloat(form.unit_cost.value);
+        const items = [{ product_id: p.id, name: p.name, qty, unit_cost }];
+        try {
+          const res = await apiWriteOrQueue({
+            path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
+            onOffline: async () => {
+              if (p.stock_qty != null) p.stock_qty = (parseFloat(p.stock_qty) || 0) + qty;
+              p.cost_price = unit_cost;
+              await cachePut("/api/products", products);
+            },
+          });
+          showStatus(statusEl, res && res.offline ? "Stock updated (offline)." : "Stock updated.", "ok");
+          await loadProducts();
+          renderProducts();
+          renderPickList();
+        } catch (err) {
+          showStatus(statusEl, err.message, "err");
+        }
+      });
+      row.appendChild(form);
+    }
+
+    // ---------- batch stock-in (multiple items in one submission) ----------
+    let stockinRowCount = 0;
+    const stockinSection = document.getElementById("stockin-section");
+    const stockinRowsEl = document.getElementById("stockin-rows");
+
+    document.getElementById("stockin-toggle-btn").addEventListener("click", () => {
+      const showing = stockinSection.style.display !== "none";
+      stockinSection.style.display = showing ? "none" : "block";
+      if (!showing && !stockinRowsEl.children.length) addStockinRow();
+    });
+
+    function productOptions(selectedId) {
+      return products
+        .filter((p) => p.active)
+        .map((p) => `<option value="${p.id}" data-cost="${p.cost_price}" ${selectedId === p.id ? "selected" : ""}>${escapeHtml(p.name)} (#${escapeHtml(p.item_code)})</option>`)
+        .join("");
+    }
+
+    function addStockinRow() {
+      const id = ++stockinRowCount;
+      const row = document.createElement("div");
+      row.className = "stock-in-row";
+      row.dataset.rowId = id;
+      row.innerHTML = `
+        <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions()}</select></div>
+        <div class="field"><label>QTY RECEIVED</label><input type="number" name="qty" step="0.01" min="0" required></div>
+        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" required></div>
+        <button type="button" class="btn-sm btn-reject" data-action="remove-row">✕</button>
+      `;
+      const select = row.querySelector("select[name='product_id']");
+      const costInput = row.querySelector("input[name='unit_cost']");
+      function fillDefaultCost() {
+        const opt = select.selectedOptions[0];
+        if (opt) costInput.value = opt.dataset.cost || 0;
+      }
+      select.addEventListener("change", fillDefaultCost);
+      fillDefaultCost();
+      row.querySelector('[data-action="remove-row"]').addEventListener("click", () => {
+        row.remove();
+        if (!stockinRowsEl.children.length) addStockinRow();
+      });
+      stockinRowsEl.appendChild(row);
+    }
+
+    document.getElementById("stockin-add-row-btn").addEventListener("click", addStockinRow);
+
+    document.getElementById("stockin-submit-btn").addEventListener("click", async () => {
+      const rows = [...stockinRowsEl.querySelectorAll(".stock-in-row")];
+      const items = [];
+      for (const row of rows) {
+        const productId = parseInt(row.querySelector("select[name='product_id']").value, 10);
+        const qty = parseFloat(row.querySelector("input[name='qty']").value);
+        const unitCost = parseFloat(row.querySelector("input[name='unit_cost']").value);
+        if (!productId || isNaN(qty) || qty <= 0 || isNaN(unitCost)) continue;
+        const product = products.find((p) => p.id === productId);
+        items.push({ product_id: productId, name: product ? product.name : "", qty, unit_cost: unitCost });
+      }
+      if (!items.length) { showStatus(statusEl, "Add at least one valid item (product, qty, unit cost) first.", "err"); return; }
+
+      const btn = document.getElementById("stockin-submit-btn");
+      btn.disabled = true; btn.textContent = "RECORDING...";
+      try {
+        const res = await apiWriteOrQueue({
+          path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
+          onOffline: async () => {
+            for (const it of items) {
+              const prod = products.find((x) => x.id === it.product_id);
+              if (prod && prod.stock_qty != null) prod.stock_qty = (parseFloat(prod.stock_qty) || 0) + it.qty;
+              if (prod) prod.cost_price = it.unit_cost;
+            }
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? `Stock queued offline for ${items.length} item(s).` : `Stock updated for ${items.length} item(s).`, "ok");
+        stockinRowsEl.innerHTML = "";
+        addStockinRow();
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "RECORD ALL";
+      }
+    });
+
+    async function toggleProductActive(p) {
+      try {
+        const next = p.active ? 0 : 1;
+        const res = await apiWriteOrQueue({
+          path: `/api/products/${p.id}`, method: "PUT", body: { active: next }, label: "Product toggle",
+          onOffline: async () => {
+            p.active = next;
+            await cachePut("/api/products", products);
+          },
+        });
+        if (res && res.offline) showStatus(statusEl, "Product status saved offline.", "ok");
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    }
+
+    async function deleteProduct(p) {
+      if (shop.tracks_inventory && (parseFloat(p.stock_qty) || 0) > 0) {
+        showStatus(statusEl, `Can't delete "${p.name}" — ${p.stock_qty} still in stock. Deactivate it instead.`, "err");
+        return;
+      }
+      if (!confirm(`Delete "${p.name}" permanently? Past sales keep their lines. To just hide it, use Deactivate.`)) return;
+      try {
+        const res = await apiWriteOrQueue({
+          path: `/api/products/${p.id}`, method: "DELETE", body: {}, label: "Product delete",
+          onOffline: async () => {
+            products = products.filter((x) => x.id !== p.id);
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Product deleted (offline)." : "Product deleted.", "ok");
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    }
+
+    // ---------- manual SYNC (also runs when the OFFLINE / UNSYNCED badge is tapped) ----------
+    async function syncNow() {
+      const btn = document.getElementById("sync-btn");
+      btn.disabled = true; btn.textContent = "SYNCING…";
+      try {
+        if (!navigator.onLine) { showStatus(statusEl, "You're offline — can't sync yet.", "err"); return; }
+        await retryFailedQueue();
+        await flushAll();
+        shop = await cachedGet("/api/shop/settings");
+        await loadItemGroups();
+        await loadProducts();
+        renderPickList(document.getElementById("product-search").value);
+        renderProducts();
+        const active = document.querySelector(".tab-btn.active");
+        if (active && active.dataset.tab === "history") loadHistory();
+        if (active && active.dataset.tab === "reports") { loadReports(); loadTransactions(); }
+        const left = await pendingCount();
+        if (!left.total) {
+          showStatus(statusEl, "Synced — everything is up to date.", "ok");
+        } else {
+          showStatus(statusEl, `${left.total} item(s) still unsynced${left.firstError ? ": " + left.firstError : ""}`, "err");
+          if (left.hasError && confirm("Some saved changes keep failing. Discard the failed changes (not sales)?")) {
+            await discardFailedWrites();
+            showStatus(statusEl, "Failed changes discarded.", "ok");
+          }
+        }
+      } catch (e) {
+        showStatus(statusEl, isNetworkError(e) ? "Still can't reach the server." : e.message, "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "SYNC";
+        updatePendingBadge();
+      }
+    }
+    document.getElementById("sync-btn").addEventListener("click", syncNow);
+    document.getElementById("offline-badge").addEventListener("click", syncNow);
+
+    // ================= HISTORY =================
+    let historyDocs = []; // last fetched batch, so the search box can filter client-side without refetching
+    document.getElementById("h-apply-btn").addEventListener("click", loadHistory);
+    document.getElementById("h-search").addEventListener("input", () => renderHistory(historyDocs));
+    async function loadHistory() {
+      const body = document.getElementById("history-body");
+      body.innerHTML = '<tr><td colspan="5" class="loading-line">Loading…</td></tr>';
+      const from = document.getElementById("h-from").value;
+      const to = document.getElementById("h-to").value;
+      try {
+        historyDocs = await cachedGet(`/api/documents?from=${from}&to=${to}&limit=200`);
+        renderHistory(historyDocs);
+      } catch (e) {
+        body.innerHTML = `<tr><td colspan="5" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+    function renderHistory(allDocs) {
+      const body = document.getElementById("history-body");
+      body.innerHTML = "";
+      const q = document.getElementById("h-search").value.trim();
+      const docs = q ? allDocs.filter((d) => String(d.doc_number).includes(q)) : allDocs;
+      if (!docs.length) { body.innerHTML = `<tr><td colspan="5" class="loading-line">${q ? "No sales match that doc #." : "No sales in this range."}</td></tr>`; return; }
+      docs.forEach((d) => {
+        const tr = document.createElement("tr");
+        const canEditVoid = d.status === "ORIGINAL" && d.doc_type === "SALE";
+        tr.innerHTML = `
+          <td>#${d.doc_number}</td>
+          <td><span class="stamp ${d.status === "ORIGINAL" ? "active" : d.status === "CANCELLED" ? "rejected" : ""}">${d.status}</span></td>
+          <td>${fmtMoney(d.total)}</td>
+          <td>${fmtDate(d.created_at)}</td>
+          <td class="ledger-actions">
+            <button class="btn-sm btn-ghost" data-action="print">PRINT</button>
+            ${canEditVoid ? '<button class="btn-sm btn-ghost" data-action="edit">EDIT</button>' : ""}
+            ${canEditVoid ? '<button class="btn-sm btn-reject" data-action="void">VOID</button>' : ""}
+          </td>
+        `;
+        tr.querySelector('[data-action="print"]').addEventListener("click", () => printReceipt(d.id));
+        if (canEditVoid) {
+          tr.querySelector('[data-action="edit"]').addEventListener("click", () => startEdit(d.id));
+          tr.querySelector('[data-action="void"]').addEventListener("click", () => voidDoc(d));
+        }
+        body.appendChild(tr);
+      });
+    }
+    async function voidDoc(d) {
+      if (!confirm(`Void sale #${d.doc_number}? This reverses the stock and revenue effect.`)) return;
+      try {
+        await apiFetch(`/api/documents/${d.id}/void`, { method: "POST" });
+        showStatus(statusEl, `Sale #${d.doc_number} voided.`, "ok");
+        loadHistory();
+        loadProducts();
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+
+    // ================= REPORTS =================
+    document.getElementById("r-apply-btn").addEventListener("click", () => { loadReports(); loadTransactions(); });
+    document.getElementById("tx-apply-btn").addEventListener("click", loadTransactions);
+    async function loadReports() {
+      const from = document.getElementById("r-from").value;
+      const to = document.getElementById("r-to").value;
+      try {
+        const data = await cachedGet(`/api/reports?from=${from}&to=${to}`);
+        renderReports(data);
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+
+    async function loadTransactions() {
+      const from = document.getElementById("r-from").value;
+      const to = document.getElementById("r-to").value;
+      const productId = document.getElementById("tx-item").value;
+      const group = document.getElementById("tx-group").value;
+      const body = document.getElementById("tx-body");
+      body.innerHTML = '<tr><td colspan="10" class="loading-line">Loading…</td></tr>';
+      try {
+        let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
+        if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
+        if (group) path += `&group=${encodeURIComponent(group)}`;
+        const rows = await cachedGet(path);
+        renderTransactions(rows);
+      } catch (e) {
+        body.innerHTML = `<tr><td colspan="10" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+    function renderTransactions(rows) {
+      const body = document.getElementById("tx-body");
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="10" class="loading-line">No transactions in this range.</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map((r) => {
+        const isReversal = r.doc_type === "REVERSAL";
+        const costTotal = (r.cost_price || 0) * r.qty;
+        return `<tr${isReversal ? ' style="color:var(--rust);"' : ""}>
+          <td>${fmtDate(r.created_at)}</td>
+          <td>#${r.doc_number}${isReversal ? " (void)" : ""}</td>
+          <td>${escapeHtml(r.name)}${r.item_code ? ` <span class="shop-card-meta" style="display:inline;">#${escapeHtml(r.item_code)}</span>` : ""}</td>
+          <td>${escapeHtml(r.item_group || "—")}</td>
+          <td>${r.qty}</td>
+          <td>${fmtMoney(r.unit_price)}</td>
+          <td>${fmtMoney(r.discount_amount)}</td>
+          <td>${fmtMoney(r.line_total)}</td>
+          <td>${fmtMoney(costTotal)}</td>
+          <td>${fmtMoney(r.gp_amount)}</td>
+        </tr>`;
+      }).join("");
+    }
+    function renderReports(data) {
+      document.getElementById("summary-cards").innerHTML = `
+        <div class="summary-card"><div class="summary-card-label">Revenue</div><div class="summary-card-value">${fmtMoney(data.revenue)}</div></div>
+        <div class="summary-card"><div class="summary-card-label">Discounts</div><div class="summary-card-value">${fmtMoney(data.discounts)}</div></div>
+        <div class="summary-card"><div class="summary-card-label">Sales</div><div class="summary-card-value">${data.doc_count}</div></div>
+        <div class="summary-card"><div class="summary-card-label">Gross profit</div><div class="summary-card-value">${fmtMoney(data.gross_profit)}</div></div>
+        <div class="summary-card"><div class="summary-card-label">Gross margin</div><div class="summary-card-value">${data.gp_margin_pct.toFixed(1)}%</div></div>
+      `;
+      const topBody = document.getElementById("top-items-body");
+      topBody.innerHTML = data.top_items.length
+        ? data.top_items.map((it) => `<tr><td>${escapeHtml(it.name)}</td><td>${it.qty_sold}</td><td>${fmtMoney(it.revenue)}</td><td>${fmtMoney(it.gross_profit)}</td></tr>`).join("")
+        : '<tr><td colspan="4" class="loading-line">No sales in this range.</td></tr>';
+
+      const stockTitle = document.getElementById("stock-section-title");
+      const stockWrap = document.getElementById("stock-table-wrap");
+      if (shop.tracks_inventory) {
+        stockTitle.style.display = "block";
+        stockWrap.style.display = "block";
+        document.getElementById("stock-body").innerHTML = data.stock.map((s) => {
+          const low = s.stock_qty !== null && s.stock_qty <= (s.low_stock_threshold ?? 5);
+          return `<tr${low ? ' style="color:var(--rust);"' : ""}><td>#${escapeHtml(s.item_code)}</td><td>${escapeHtml(s.name)}</td><td>${s.stock_qty ?? "—"}</td><td>${s.low_stock_threshold ?? 5}</td><td>${fmtMoney(s.cost_price)}</td><td>${fmtMoney(s.unit_price)}</td></tr>`;
+        }).join("");
+      } else {
+        stockTitle.style.display = "none";
+        stockWrap.style.display = "none";
+      }
+    }
+
+    // ================= SETTINGS =================
+    function fillSettingsForm() {
+      document.getElementById("s-legal-name").value = shop.legal_name || "";
+      document.getElementById("s-address").value = shop.address || "";
+      document.getElementById("s-contact").value = shop.contact_number || "";
+      document.getElementById("s-footer").value = shop.footer_note || "";
+      document.getElementById("s-paper").value = String(shop.paper_width || 80);
+      document.getElementById("s-tax").value = ((shop.tax_rate || 0) * 100).toString();
+    }
+    document.getElementById("settings-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("settings-save-btn");
+      btn.disabled = true; btn.textContent = "SAVING...";
+      try {
+        const body = {
+          legal_name: document.getElementById("s-legal-name").value.trim(),
+          address: document.getElementById("s-address").value.trim(),
+          contact_number: document.getElementById("s-contact").value.trim(),
+          footer_note: document.getElementById("s-footer").value.trim(),
+          paper_width: parseInt(document.getElementById("s-paper").value, 10),
+          tax_rate: (parseFloat(document.getElementById("s-tax").value) || 0) / 100,
+        };
+        const res = await apiWriteOrQueue({
+          path: "/api/shop/settings", method: "PUT", body, label: "Settings",
+          onOffline: async () => {
+            Object.assign(shop, body);
+            await cachePut("/api/shop/settings", shop);
+          },
+        });
+        Object.assign(shop, body);
+        showStatus(statusEl, res && res.offline ? "Settings saved offline." : "Settings saved.", "ok");
+        updateLowStockPill();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "SAVE SETTINGS";
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

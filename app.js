@@ -1,68 +1,50 @@
-/* Shared helpers for Point of Sale PWA */
+// Update this once the Worker is deployed (see README.md in the project root)
+const API_BASE = "https://pos.slcantec.workers.dev";
 
-const API_BASE = (() => {
-  // Capacitor Android WebView is file:// or capacitor:// — always hit the live API host.
-  const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  if (isNative) return "https://pos-api.slcantec.com";
-  // Local static preview / file open
-  if (location.protocol === "file:" || location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    return "https://pos-api.slcantec.com";
+const Auth = {
+  get token() { return localStorage.getItem("pos_token"); },
+  get role() { return localStorage.getItem("pos_role"); },
+  get shopId() { return localStorage.getItem("pos_shop_id"); },
+  set({ token, role, shopId }) {
+    localStorage.setItem("pos_token", token);
+    localStorage.setItem("pos_role", role);
+    if (shopId) localStorage.setItem("pos_shop_id", shopId);
+  },
+  clear() {
+    localStorage.removeItem("pos_token");
+    localStorage.removeItem("pos_role");
+    localStorage.removeItem("pos_shop_id");
+  },
+  isLoggedIn() { return !!this.token; },
+};
+
+async function apiFetch(path, options = {}) {
+  const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+  if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
+  // Hard timeout so a hung request does not leave the till on "POSTING..." forever.
+  // Callers that want offline fallback treat AbortError / TypeError as network errors.
+  const timeoutMs = options.timeoutMs != null ? options.timeoutMs : 15000;
+  const ctrl = new AbortController();
+  const external = options.signal;
+  if (external) {
+    if (external.aborted) ctrl.abort();
+    else external.addEventListener("abort", () => ctrl.abort(), { once: true });
   }
-  // Production Pages + custom domain
-  return "";
-})();
-
-function getToken() {
-  return localStorage.getItem("pos_token") || "";
-}
-
-function setToken(t) {
-  if (t) localStorage.setItem("pos_token", t);
-  else localStorage.removeItem("pos_token");
-}
-
-function getRole() {
-  return localStorage.getItem("pos_role") || "";
-}
-
-function setRole(r) {
-  if (r) localStorage.setItem("pos_role", r);
-  else localStorage.removeItem("pos_role");
-}
-
-function clearSession() {
-  setToken("");
-  setRole("");
-}
-
-async function apiFetch(path, opts = {}) {
-  const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs || 15000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...opts,
-      headers,
-      signal: opts.signal || controller.signal,
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch (_) { data = { raw: text }; }
-    if (!res.ok) {
-      const msg = (data && (data.error || data.message)) || res.statusText || "request failed";
-      const err = new Error(msg);
-      err.status = res.status;
-      err.data = data;
-      throw err;
+    const resp = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: ctrl.signal });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const e = new Error(data.error || "Something went wrong");
+      e.status = resp.status;
+      throw e;
     }
     return data;
   } catch (e) {
-    if (e.name === "AbortError") {
-      const err = new Error("Request timed out");
-      err.status = 0;
-      throw err;
+    if (e && (e.name === "AbortError" || e.name === "TimeoutError")) {
+      const te = new TypeError("Network timeout — will retry when connection is stable");
+      te.status = 0;
+      throw te;
     }
     throw e;
   } finally {
