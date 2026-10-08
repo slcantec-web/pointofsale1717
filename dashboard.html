@@ -241,8 +241,8 @@
         <button class="btn-sm btn-ghost" id="h-apply-btn">APPLY</button>
       </div>
       <div class="mini-table-wrap">
-        <table class="mini-table">
-          <thead><tr><th>Doc #</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
+        <table class="mini-table table-history">
+          <thead><tr><th>Doc</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody id="history-body"><tr><td colspan="5" class="loading-line">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -259,15 +259,15 @@
 
       <p class="section-title">Top items</p>
       <div class="mini-table-wrap">
-        <table class="mini-table">
-          <thead><tr><th>Item</th><th>Qty sold</th><th>Revenue</th><th class="keep-case">GP</th></tr></thead>
+        <table class="mini-table table-top">
+          <thead><tr><th>Item</th><th>Qty</th><th>Revenue</th><th class="keep-case">GP</th></tr></thead>
           <tbody id="top-items-body"></tbody>
         </table>
       </div>
 
       <p class="section-title" id="stock-section-title" style="display:none;">Stock levels</p>
       <div class="mini-table-wrap" id="stock-table-wrap" style="display:none;">
-        <table class="mini-table">
+        <table class="mini-table table-stock">
           <thead><tr><th>Code</th><th>Item</th><th>Stock</th><th>Min</th><th>Cost</th><th>Price</th></tr></thead>
           <tbody id="stock-body"></tbody>
         </table>
@@ -281,8 +281,11 @@
       </div>
       <p class="shop-card-meta" style="margin-bottom:10px;">Uses the same FROM/TO date range as above. Every sale line is listed separately, with its own cost and GP — voided lines show in rust and net themselves out.</p>
       <div class="mini-table-wrap">
-        <table class="mini-table">
-          <thead><tr><th>Date</th><th>Doc #</th><th>Item</th><th>Group</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Sale amt</th><th>Cost</th><th class="keep-case">GP</th></tr></thead>
+        <table class="mini-table table-tx">
+          <thead><tr>
+            <th>Date</th><th>Doc</th><th>Item</th><th class="col-opt">Group</th>
+            <th>Qty</th><th>Price</th><th class="col-opt">Disc</th><th>Sale</th><th>Cost</th><th class="keep-case">GP</th>
+          </tr></thead>
           <tbody id="tx-body"><tr><td colspan="10" class="loading-line">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -460,6 +463,17 @@
       if (isNaN(d)) return iso;
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
         " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+    // Compact date for tables (avoids wrap on narrow screens)
+    function fmtDateShort(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso.replace(" ", "T") + "Z");
+      if (isNaN(d)) return iso;
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mon = d.toLocaleString(undefined, { month: "short" });
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return dd + " " + mon + " " + hh + ":" + mm;
     }
     function isoDaysAgo(n) {
       const d = new Date();
@@ -1675,14 +1689,16 @@
         const tr = document.createElement("tr");
         const canEditVoid = d.status === "ORIGINAL" && d.doc_type === "SALE";
         tr.innerHTML = `
-          <td>#${d.doc_number}</td>
-          <td><span class="stamp ${d.status === "ORIGINAL" ? "active" : d.status === "CANCELLED" ? "rejected" : ""}">${d.status}</span></td>
-          <td>${fmtMoney(d.total)}</td>
-          <td>${fmtDate(d.created_at)}</td>
-          <td class="ledger-actions">
-            <button class="btn-sm btn-ghost" data-action="print">PRINT</button>
-            ${canEditVoid ? '<button class="btn-sm btn-ghost" data-action="edit">EDIT</button>' : ""}
-            ${canEditVoid ? '<button class="btn-sm btn-reject" data-action="void">VOID</button>' : ""}
+          <td class="td-num">#${d.doc_number}</td>
+          <td><span class="stamp ${d.status === "ORIGINAL" ? "active" : d.status === "CANCELLED" ? "rejected" : ""}">${d.status === "ORIGINAL" ? "OK" : d.status === "CANCELLED" ? "VOID" : d.status}</span></td>
+          <td class="td-num">${fmtMoney(d.total)}</td>
+          <td class="td-date">${fmtDateShort(d.created_at)}</td>
+          <td class="td-actions">
+            <div class="row-actions">
+              <button type="button" class="btn-xs btn-ghost" data-action="print">Print</button>
+              ${canEditVoid ? '<button type="button" class="btn-xs btn-ghost" data-action="edit">Edit</button>' : ""}
+              ${canEditVoid ? '<button type="button" class="btn-xs btn-reject" data-action="void">Void</button>' : ""}
+            </div>
           </td>
         `;
         tr.querySelector('[data-action="print"]').addEventListener("click", () => printReceipt(d.id));
@@ -1746,16 +1762,16 @@
         const isReversal = r.doc_type === "REVERSAL";
         const costTotal = (r.cost_price || 0) * r.qty;
         return `<tr${isReversal ? ' style="color:var(--rust);"' : ""}>
-          <td>${fmtDate(r.created_at)}</td>
-          <td>#${r.doc_number}${isReversal ? " (void)" : ""}</td>
-          <td>${escapeHtml(r.name)}${r.item_code ? ` <span class="shop-card-meta" style="display:inline;">#${escapeHtml(r.item_code)}</span>` : ""}</td>
-          <td>${escapeHtml(r.item_group || "—")}</td>
-          <td>${r.qty}</td>
-          <td>${fmtMoney(r.unit_price)}</td>
-          <td>${fmtMoney(r.discount_amount)}</td>
-          <td>${fmtMoney(r.line_total)}</td>
-          <td>${fmtMoney(costTotal)}</td>
-          <td>${fmtMoney(r.gp_amount)}</td>
+          <td class="td-date">${fmtDateShort(r.created_at)}</td>
+          <td class="td-num">#${r.doc_number}${isReversal ? " v" : ""}</td>
+          <td class="td-item">${escapeHtml(r.name)}${r.item_code ? ` <span class="td-code">#${escapeHtml(r.item_code)}</span>` : ""}</td>
+          <td class="col-opt">${escapeHtml(r.item_group || "—")}</td>
+          <td class="td-num">${r.qty}</td>
+          <td class="td-num">${fmtMoney(r.unit_price)}</td>
+          <td class="td-num col-opt">${fmtMoney(r.discount_amount)}</td>
+          <td class="td-num">${fmtMoney(r.line_total)}</td>
+          <td class="td-num">${fmtMoney(costTotal)}</td>
+          <td class="td-num">${fmtMoney(r.gp_amount)}</td>
         </tr>`;
       }).join("");
     }
@@ -1769,7 +1785,7 @@
       `;
       const topBody = document.getElementById("top-items-body");
       topBody.innerHTML = data.top_items.length
-        ? data.top_items.map((it) => `<tr><td>${escapeHtml(it.name)}</td><td>${it.qty_sold}</td><td>${fmtMoney(it.revenue)}</td><td>${fmtMoney(it.gross_profit)}</td></tr>`).join("")
+        ? data.top_items.map((it) => `<tr><td class="td-item">${escapeHtml(it.name)}</td><td class="td-num">${it.qty_sold}</td><td class="td-num">${fmtMoney(it.revenue)}</td><td class="td-num">${fmtMoney(it.gross_profit)}</td></tr>`).join("")
         : '<tr><td colspan="4" class="loading-line">No sales in this range.</td></tr>';
 
       const stockTitle = document.getElementById("stock-section-title");
@@ -1779,7 +1795,7 @@
         stockWrap.style.display = "block";
         document.getElementById("stock-body").innerHTML = data.stock.map((s) => {
           const low = s.stock_qty !== null && s.stock_qty <= (s.low_stock_threshold ?? 5);
-          return `<tr${low ? ' style="color:var(--rust);"' : ""}><td>#${escapeHtml(s.item_code)}</td><td>${escapeHtml(s.name)}</td><td>${s.stock_qty ?? "—"}</td><td>${s.low_stock_threshold ?? 5}</td><td>${fmtMoney(s.cost_price)}</td><td>${fmtMoney(s.unit_price)}</td></tr>`;
+          return `<tr${low ? ' style="color:var(--rust);"' : ""}><td class="td-num">#${escapeHtml(s.item_code)}</td><td class="td-item">${escapeHtml(s.name)}</td><td class="td-num">${s.stock_qty ?? "—"}</td><td class="td-num">${s.low_stock_threshold ?? 5}</td><td class="td-num">${fmtMoney(s.cost_price)}</td><td class="td-num">${fmtMoney(s.unit_price)}</td></tr>`;
         }).join("");
       } else {
         stockTitle.style.display = "none";
@@ -1899,7 +1915,7 @@
           return "<tr>" +
             "<td><strong>#" + r.doc_number + "</strong></td>" +
             "<td>" + (typeLabel[r.doc_type] || r.doc_type) + "</td>" +
-            "<td>" + fmtDate(r.created_at) + "</td>" +
+            "<td>" + fmtDateShort(r.created_at) + "</td>" +
             "<td>" + (r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.total) : "\u2014") + "</td>" +
             "<td>" + escapeHtml(r.note || "\u2014") + "</td>" +
             "</tr>";

@@ -1285,3 +1285,134 @@ body.receipt-preview-open { overflow: hidden; }
   .summary-card-value { font-size: 16px; }
   .app-header-title h2 { font-size: 14px; }
 }
+
+/* =========================================================
+   TABLES — no wrap on mobile; horizontal scroll instead
+   ========================================================= */
+.mini-table-wrap,
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.mini-table th,
+.mini-table td,
+.data-table th,
+.data-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.td-num { text-align: right; font-variant-numeric: tabular-nums; }
+.td-date { font-variant-numeric: tabular-nums; font-size: 0.92em; color: var(--ink-soft); }
+.td-item { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.td-code { font-size: 0.9em; color: var(--ink-soft); font-weight: 500; }
+.td-actions { width: 1%; }
+.row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+}
+.btn-xs {
+  display: inline-block;
+  width: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.btn-xs.btn-ghost { background: var(--paper); }
+.btn-xs.btn-reject {
+  background: var(--rust-soft);
+  color: var(--rust);
+  border-color: transparent;
+}
+
+@media (max-width: 900px) {
+  .mini-table-wrap,
+  .table-wrap {
+    margin-left: -2px;
+    margin-right: -2px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .mini-table,
+  .data-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .mini-table th,
+  .data-table th {
+    font-size: 9.5px;
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+  .mini-table td,
+  .data-table td {
+    padding: 6px 8px;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  .td-item {
+    max-width: 110px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .td-date { font-size: 10px; }
+  .btn-xs {
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+  .row-actions { gap: 3px; }
+  .stamp {
+    font-size: 9px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  /* History: keep actions on one line */
+  .table-history .td-actions { padding-right: 6px; }
+  .table-history .row-actions { flex-wrap: nowrap; }
+
+  /* Item-wise: optional columns stay, table scrolls horizontally */
+  .table-tx {
+    min-width: 640px;
+  }
+  .table-stock {
+    min-width: 420px;
+  }
+  .table-top {
+    min-width: 280px;
+  }
+  .table-history {
+    min-width: 100%;
+  }
+
+  /* ledger (admin-style rows if any) */
+  .ledger-actions {
+    flex-wrap: nowrap !important;
+    gap: 4px;
+  }
+  .ledger-actions .btn-sm {
+    padding: 5px 8px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 460px) {
+  .mini-table th, .data-table th { padding: 5px 6px; font-size: 9px; }
+  .mini-table td, .data-table td { padding: 5px 6px; font-size: 10.5px; }
+  .td-item { max-width: 96px; }
+  .btn-xs { padding: 3px 5px; font-size: 9.5px; }
+  .table-tx { min-width: 600px; }
+}
