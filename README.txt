@@ -1,21 +1,16 @@
-Session: stay logged in + idle lock + 24h full logout
-=====================================================
-
+Online / Offline status indicator
+=================================
 Overwrite:
-  app.js
   dashboard.html
-  admin.html
-  index.html
+  offline.js
   style.css
-  worker.js   (token lifetime = 24h)
 
-Behaviour
----------
-1) Close app / browser tab → stay logged in (token in localStorage)
-2) Reopen → back into the till (no login form) if under 24h
-3) No activity for 20 minutes → lock screen; password unlocks
-4) After 24 hours → full logout; must log in again
+What you see
+------------
+- Header chip: green "Online" or red "Offline" (always visible)
+- When offline: red banner under the header
+- Unsynced count still on the yellow badge next to SYNC
+- Toast when connection drops or returns
 
-Unlock uses the same email + password (email is stored at login).
-If you logged in before this update, log out once and log in again
-so the email is saved for unlock.
+Works on web and Android APK (same WebView).
+No worker / D1 changes.

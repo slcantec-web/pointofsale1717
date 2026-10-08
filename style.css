@@ -1564,3 +1564,74 @@ body.mode-billing .plist-row {
 body.session-locked {
   overflow: hidden;
 }
+
+/* Connection status — always visible Online / Offline */
+.conn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  user-select: none;
+  border: 1.5px solid transparent;
+}
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.conn-chip.online {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: rgba(15, 157, 104, 0.25);
+}
+.conn-chip.online .conn-dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(15, 157, 104, 0.25);
+}
+.conn-chip.offline {
+  background: var(--rust-soft);
+  color: var(--rust);
+  border-color: rgba(217, 58, 74, 0.3);
+}
+.conn-chip.offline .conn-dot {
+  background: var(--rust);
+  box-shadow: 0 0 0 3px rgba(217, 58, 74, 0.25);
+  animation: conn-pulse 1.4s ease-in-out infinite;
+}
+@keyframes conn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.conn-banner {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  background: var(--rust);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  padding: 6px 10px;
+  letter-spacing: 0.01em;
+  margin: -6px -8px 8px;
+  border-radius: 0;
+}
+@media (max-width: 900px) {
+  .conn-chip {
+    font-size: 10px;
+    padding: 4px 8px 4px 6px;
+  }
+  .conn-dot { width: 7px; height: 7px; }
+  .conn-banner {
+    z-index: 28;
+    font-size: 11px;
+    padding: 5px 8px;
+    margin: -6px -8px 8px;
+  }
+}

@@ -251,16 +251,36 @@ async function discardFailedWrites() {
   updatePendingBadge();
 }
 
+function updateConnectionUI(online) {
+  const isOnline = online != null ? !!online : (typeof navigator !== "undefined" ? navigator.onLine : true);
+  const chip = document.getElementById("conn-status");
+  const banner = document.getElementById("conn-banner");
+  if (chip) {
+    chip.classList.toggle("online", isOnline);
+    chip.classList.toggle("offline", !isOnline);
+    const label = chip.querySelector(".conn-label");
+    if (label) label.textContent = isOnline ? "Online" : "Offline";
+    chip.title = isOnline ? "Connected to the internet" : "No internet — working offline";
+  }
+  if (banner) {
+    banner.style.display = isOnline ? "none" : "block";
+  }
+  document.body.classList.toggle("is-offline", !isOnline);
+  document.body.classList.toggle("is-online", isOnline);
+}
+
 async function updatePendingBadge() {
+  updateConnectionUI();
   const el = document.getElementById("offline-badge");
   if (!el) return;
   const { total, hasError } = await pendingCount();
   const parts = [];
-  if (!navigator.onLine) parts.push("OFFLINE");
-  if (total) parts.push(`${total} UNSYNCED`);
+  // Connection is shown on #conn-status; badge is only for queue / errors
+  if (total) parts.push(total + " unsynced");
+  if (hasError) parts.push("sync error");
   el.textContent = parts.join(" · ");
   el.style.display = parts.length ? "inline-block" : "none";
-  el.classList.toggle("zero", !hasError && navigator.onLine);
+  el.classList.toggle("zero", !hasError);
 }
 
 function notifyOffline(msg) {
@@ -305,17 +325,28 @@ function registerBackgroundSync() {
 }
 
 window.addEventListener("online", () => {
+  updateConnectionUI(true);
   updatePendingBadge();
+  notifyOffline("Back online — syncing…");
   scheduleFlush(0);
 });
-window.addEventListener("offline", updatePendingBadge);
+window.addEventListener("offline", () => {
+  updateConnectionUI(false);
+  updatePendingBadge();
+  notifyOffline("You are offline — sales will save on this device");
+});
 window.addEventListener("load", () => {
+  updateConnectionUI();
   updatePendingBadge();
   scheduleFlush(500);
 });
 // visibility: when user returns to the tab/app, flush pending work immediately
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") scheduleFlush(0);
+  if (document.visibilityState === "visible") {
+    updateConnectionUI();
+    updatePendingBadge();
+    scheduleFlush(0);
+  }
 });
 
 // Service worker can ask us to flush

@@ -33,12 +33,20 @@
         <p id="header-sub">Ring up a sale</p>
       </div>
       <div class="header-actions">
+        <span class="conn-chip online" id="conn-status" title="Connection status" role="status" aria-live="polite">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-label">Online</span>
+        </span>
         <span class="nav-pill urgent" id="offline-badge" style="display:none; margin:0;"></span>
         <button type="button" class="btn-sm btn-ghost" id="sync-btn">SYNC</button>
       </div>
     </header>
 
     <main class="app-main">
+    <!-- Full-width offline strip (extra clear on mobile) -->
+    <div id="conn-banner" class="conn-banner" style="display:none;" role="status">
+      Working offline — sales will sync when the connection returns
+    </div>
     <div id="status" class="status"></div>
 
     <div id="password-panel" class="shop-card" style="display:none; flex-direction:column; align-items:stretch; gap:10px;">
