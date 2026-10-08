@@ -43,14 +43,13 @@ const OfflineDB = (() => {
   };
 })();
 
+// Only errors that mean "no HTTP response came back" count. Real server replies (400/401/409…)
+// and ordinary code errors never do, and navigator.onLine is ignored (stale on Android WebView).
 function isNetworkError(e) {
   if (!e) return false;
+  if (e.isNetwork) return true;
   if (e.name === "AbortError" || e.name === "TimeoutError") return true;
-  if (e instanceof TypeError) return true;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
-  // fetch failures / worker timeouts often surface as TypeError; also treat 0/408/502/503/504
-  if (e.status === 0 || e.status === 408 || e.status === 502 || e.status === 503 || e.status === 504) return true;
-  return false;
+  return e.status === 0 || e.status === 408 || e.status === 502 || e.status === 503 || e.status === 504;
 }
 
 // Cache key includes the shop so two shops on one device never see each other's data.
@@ -59,13 +58,9 @@ async function cachedGet(path) {
   try {
     const data = await apiFetch(path);
     OfflineDB.put("cache", data, key).catch(() => {});
-    // Successful API traffic proves we are online
-    if (typeof markOnline === "function") markOnline({ fromApi: true });
     return data;
   } catch (e) {
     if (isNetworkError(e)) {
-      // Count toward offline only after real network failures (debounced inside markOffline)
-      if (typeof markOffline === "function") markOffline({ fromApi: true });
       const hit = await OfflineDB.get("cache", key);
       if (hit !== undefined) return hit;
     }
@@ -130,9 +125,7 @@ function scheduleFlush(delayMs) {
 }
 
 async function flushSales() {
-  // Do not trust navigator.onLine alone — recovery may have marked us online via probe
   if (!Auth.token) return { posted: 0, failed: 0 };
-  if (!_connState && typeof navigator !== "undefined" && !navigator.onLine) return { posted: 0, failed: 0 };
   let posted = 0, failed = 0;
   const queued = (await OfflineDB.getAll("sales")).sort((a, b) => a.queued_at - b.queued_at);
   for (const s of queued) {
@@ -169,7 +162,6 @@ async function flushSales() {
 
 async function flushWrites() {
   if (!Auth.token) return { posted: 0, failed: 0 };
-  if (!_connState && typeof navigator !== "undefined" && !navigator.onLine) return { posted: 0, failed: 0 };
   let posted = 0, failed = 0;
   const queued = (await OfflineDB.getAll("writes")).sort((a, b) => a.queued_at - b.queued_at);
   for (const w of queued) {
@@ -203,9 +195,9 @@ async function flushAll() {
     updatePendingBadge();
     return { sales: { posted: 0, failed: 0 }, writes: { posted: 0, failed: 0 }, total: 0 };
   }
-  // If UI says offline, probe once before giving up (Android often recovers before navigator)
-  if (!_connState) {
-    const ok = await probeConnection(true);
+  // If we think we're offline, probe once (shared, never cancelled) before giving up
+  if (!Connection.online) {
+    const ok = await Connection.probe();
     if (!ok) {
       updatePendingBadge();
       return { sales: { posted: 0, failed: 0 }, writes: { posted: 0, failed: 0 }, total: 0 };
@@ -236,7 +228,7 @@ async function flushAll() {
     } else {
       // Keep retrying quickly while work remains; slow interval when empty
       pendingCount().then(({ total }) => {
-        if (total > 0 && _connState) scheduleFlush(4000);
+        if (total > 0 && Connection.online) scheduleFlush(4000);
         else scheduleFlush(30000);
       }).catch(() => scheduleFlush(30000));
     }
@@ -267,184 +259,24 @@ async function discardFailedWrites() {
 }
 
 // ============================================================
-// Connection status — reliable Online / Offline for web + Android
+// Connection glue — the manager itself lives in app.js (Connection).
+// When we come back online: push the queue FIRST, then refresh screens, so the
+// refreshed data already includes what was just synced.
 // ============================================================
-// Strategy:
-//  1) Successful API calls → Online immediately
-//  2) Health probe confirms Online / Offline (single CORS request)
-//  3) Need 2 failed probes in a row before showing Offline (avoid flicker)
-//  4) On Online after Offline → flush queue + reload catalogue (onConnectionRestored)
-// ============================================================
-let _connState = true;
-let _connProbeInFlight = false;
-let _connProbeTimer = null;
-let _lastConnNotify = null;
-let _connWatchStarted = false;
-let _connWatchMs = 0;
-let _probeFailStreak = 0;
-let _probeGen = 0;
-let _restoreInFlight = false;
-
-function updateConnectionUI(online) {
-  const prev = _connState;
-  const isOnline = online != null ? !!online : _connState;
-  _connState = isOnline;
-  const chip = document.getElementById("conn-status");
-  const banner = document.getElementById("conn-banner");
-  if (chip) {
-    chip.classList.toggle("online", isOnline);
-    chip.classList.toggle("offline", !isOnline);
-    const label = chip.querySelector(".conn-label");
-    if (label) label.textContent = isOnline ? "Online" : "Offline";
-    chip.title = isOnline ? "Connected — tap to recheck" : "No internet — tap to recheck";
+Connection.on("restored", async () => {
+  try { await flushAll(); } catch (e) { console.warn("flush after reconnect failed", e); }
+  updatePendingBadge();
+  if (typeof window.onConnectionRestored === "function") {
+    try { await window.onConnectionRestored(); } catch (e) { console.warn("onConnectionRestored failed", e); }
   }
-  if (banner) banner.style.display = isOnline ? "none" : "block";
-  document.body.classList.toggle("is-offline", !isOnline);
-  document.body.classList.toggle("is-online", isOnline);
-  if (prev !== isOnline) rescheduleConnWatch();
-}
+});
+Connection.on("change", () => updatePendingBadge());
 
-async function notifyBecameOnline() {
-  if (_restoreInFlight) return;
-  _restoreInFlight = true;
-  try {
-    scheduleFlush(0);
-    if (typeof window.onConnectionRestored === "function") {
-      try {
-        await window.onConnectionRestored();
-      } catch (e) {
-        console.warn("onConnectionRestored failed", e);
-      }
-    }
-  } finally {
-    _restoreInFlight = false;
-  }
-}
-
-/** @param {{fromApi?: boolean}} [opts] */
-function markOffline(opts) {
-  // API failures: require a short streak so one timeout does not flip the whole UI
-  if (opts && opts.fromApi) {
-    _probeFailStreak = Math.min(_probeFailStreak + 1, 5);
-    if (_probeFailStreak < 2 && _connState) {
-      // stay Online visually; probe will settle state
-      return;
-    }
-  } else {
-    _probeFailStreak = Math.max(_probeFailStreak, 2);
-  }
-  const wasOnline = _connState;
-  updateConnectionUI(false);
-  if (wasOnline && _lastConnNotify !== "off") {
-    _lastConnNotify = "off";
-    notifyOffline("You are offline — sales will save on this device");
-  }
-}
-
-/** @param {{fromApi?: boolean, silent?: boolean}} [opts] */
-function markOnline(opts) {
-  _probeFailStreak = 0;
-  const wasOffline = !_connState;
-  updateConnectionUI(true);
-  if (wasOffline) {
-    if (_lastConnNotify !== "on") {
-      _lastConnNotify = "on";
-      if (!(opts && opts.silent)) notifyOffline("Back online — refreshing data…");
-    }
-    // Always refresh catalogue + flush when we recover
-    notifyBecameOnline();
-  }
-}
-
-function _fetchWithTimeout(url, opts, ms) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
-}
-
-/**
- * Single health probe against the Worker.
- * Any HTTP response (even 401/404) means the network path works.
- */
-async function probeConnection(force) {
-  if (_connProbeInFlight && !force) return _connState;
-  const gen = ++_probeGen;
-  _connProbeInFlight = true;
-  const base = typeof API_BASE !== "undefined" ? API_BASE : "";
-  try {
-    if (!base) {
-      const guess = typeof navigator === "undefined" || navigator.onLine !== false;
-      if (guess) markOnline({ silent: true });
-      else markOffline();
-      return guess;
-    }
-
-    const timeoutMs = 4000;
-    try {
-      const resp = await _fetchWithTimeout(
-        base + "/api/health?_=" + Date.now(),
-        {
-          method: "GET",
-          cache: "no-store",
-          headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-        },
-        timeoutMs
-      );
-      if (gen !== _probeGen) return _connState; // superseded
-      if (resp && (resp.ok || resp.status > 0)) {
-        markOnline({ silent: !_connState ? false : true });
-        return true;
-      }
-      throw new Error("bad status");
-    } catch (_) {
-      if (gen !== _probeGen) return _connState;
-      _probeFailStreak++;
-      if (_probeFailStreak >= 2) markOffline();
-      return false;
-    }
-  } finally {
-    if (gen === _probeGen) _connProbeInFlight = false;
-  }
-}
-
-function rescheduleConnWatch() {
-  if (!_connWatchStarted) return;
-  // Offline: every 3s. Online: every 25s (API traffic already proves online).
-  const ms = _connState ? 25000 : 3000;
-  if (_connProbeTimer && _connWatchMs === ms) return;
-  if (_connProbeTimer) {
-    clearInterval(_connProbeTimer);
-    _connProbeTimer = null;
-  }
-  _connWatchMs = ms;
-  _connProbeTimer = setInterval(() => {
-    if (document.visibilityState === "hidden") return;
-    probeConnection(true);
-  }, ms);
-}
-
-function startConnectionWatch() {
-  if (_connWatchStarted) return;
-  _connWatchStarted = true;
-  probeConnection(true);
-  rescheduleConnWatch();
-  const chip = document.getElementById("conn-status");
-  if (chip && !chip._connBound) {
-    chip._connBound = true;
-    chip.style.cursor = "pointer";
-    chip.addEventListener("click", () => {
-      const label = chip.querySelector(".conn-label");
-      if (label) label.textContent = "…";
-      probeConnection(true).then((ok) => {
-        updatePendingBadge();
-        if (ok) notifyBecameOnline();
-      });
-    });
-  }
-}
+// Kept for older callers
+function probeConnection() { return Connection.probe(); }
 
 async function updatePendingBadge() {
-  updateConnectionUI(_connState);
+  updateConnectionUI(Connection.online);
   const el = document.getElementById("offline-badge");
   if (!el) return;
   const { total, hasError } = await pendingCount();
@@ -456,24 +288,7 @@ async function updatePendingBadge() {
   el.classList.toggle("zero", !hasError);
 }
 
-function notifyOffline(msg) {
-  if (typeof window.showStatus === "function" && document.getElementById("status")) {
-    // prefer app's status bar when available
-  }
-  // lightweight toast that works even without status element
-  let t = document.getElementById("offline-toast");
-  if (!t) {
-    t = document.createElement("div");
-    t.id = "offline-toast";
-    t.setAttribute("role", "status");
-    t.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1a2332;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;text-align:center;display:none;pointer-events:none;";
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.style.display = "block";
-  clearTimeout(t._hide);
-  t._hide = setTimeout(() => { t.style.display = "none"; }, 3200);
-}
+function notifyOffline(msg) { showToast(msg); }
 
 function notifySync(msg) {
   notifyOffline(msg);
@@ -497,44 +312,13 @@ function registerBackgroundSync() {
   } catch (_) {}
 }
 
-window.addEventListener("online", () => {
-  // Browser says online — confirm with health probe, then refresh data
-  probeConnection(true).then((ok) => {
-    updatePendingBadge();
-    if (ok) {
-      // markOnline already triggers notifyBecameOnline when state flips
-      scheduleFlush(0);
-    }
-  });
-});
-window.addEventListener("offline", () => {
-  _probeFailStreak = 2;
-  markOffline();
-  updatePendingBadge();
-});
 window.addEventListener("load", () => {
-  startConnectionWatch();
   updatePendingBadge();
   scheduleFlush(500);
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    probeConnection(true).then((ok) => {
-      updatePendingBadge();
-      if (ok) scheduleFlush(0);
-    });
-  }
+  if (document.visibilityState === "visible") scheduleFlush(300);
 });
-try {
-  if (navigator.connection && navigator.connection.addEventListener) {
-    navigator.connection.addEventListener("change", () => {
-      probeConnection(true).then((ok) => {
-        updatePendingBadge();
-        if (ok) scheduleFlush(0);
-      });
-    });
-  }
-} catch (_) {}
 
 // Service worker can ask us to flush
 if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {

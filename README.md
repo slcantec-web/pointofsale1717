@@ -146,3 +146,11 @@ The Gmail SMTP path (`EMAIL_PROVIDER=gmail`) is a hand-written minimal SMTP clie
 - **Offline sales:** `offline.js` caches products/categories/settings and queues sales made offline in IndexedDB; they post automatically when back online. `POST /api/documents/sale` accepts `client_ref` (idempotency key, stops duplicates on retry) and `created_at` (original sale time).
 - **Run once in the D1 Console:** `migration-add-otp-and-client-ref.sql`. Deploy the Worker **before** the Pages site picks up the new signup page.
 - **Android APK:** see `BUILD-APK.md` (`android-app/` is a Capacitor wrapper; GitHub Actions builds the debug APK).
+
+## Connection handling (Online / Offline)
+One `Connection` manager in `app.js` is shared by every page (dashboard, admin, login…).
+- Any HTTP reply from the Worker proves we're online instantly; a network failure only triggers an immediate health probe, and only a failed probe marks us Offline.
+- While offline, probes run back-to-back (one at a time, never cancelled) with 1s→5s backoff; network events, app resume and taps probe immediately. `navigator.onLine` is only a hint.
+- On reconnect: queued sales/changes are flushed first, then the screen data is refreshed (`window.onConnectionRestored`, and `Connection.on("restored", fn)` on other pages).
+- Reads (GET) retry once automatically; writes never auto-retry (queued offline instead, sales are idempotent via `client_ref`).
+- Android app: `@capacitor/network` gives native connectivity events — rebuild the APK to pick it up.

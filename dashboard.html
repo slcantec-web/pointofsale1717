@@ -984,7 +984,7 @@
       const clientRef = newClientRef();
       const createdAt = new Date().toISOString();
       try {
-        if (!editingDocId && !navigator.onLine) throw new TypeError("offline");
+        if (!editingDocId) Connection.assertReachable(); // throws a network error right after a confirmed drop, so the sale queues instantly
         const path = editingDocId ? `/api/documents/${editingDocId}/edit` : "/api/documents/sale";
         const payload = { items, received_amount: receivedAmount };
         if (!editingDocId) { payload.client_ref = clientRef; payload.created_at = createdAt; }
@@ -1088,7 +1088,7 @@
     /** Try online write; if offline, queue and optionally apply local optimistic update. */
     async function apiWriteOrQueue({ path, method, body, label, onOffline }) {
       try {
-        if (!navigator.onLine) throw new TypeError("offline");
+        Connection.assertReachable();
         return await apiFetch(path, { method, body: JSON.stringify(body) });
       } catch (e) {
         if (!isNetworkError(e)) throw e;
@@ -2006,7 +2006,7 @@
       btn.disabled = true; btn.textContent = "SYNCING…";
       try {
         // Confirm real connectivity (navigator.onLine alone is unreliable on Android)
-        const online = await probeConnection(true);
+        const online = await Connection.probe();
         if (!online) { showStatus(statusEl, "You're offline — can't sync yet.", "err"); return; }
         await retryFailedQueue();
         await flushAll();

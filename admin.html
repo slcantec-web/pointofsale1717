@@ -548,6 +548,9 @@
     loadAdminSettings();
     loadShops();
     loadNameRequests();
+
+    // Refresh automatically the moment the connection comes back
+    Connection.on("restored", () => { loadAdminSettings(); loadShops(); loadNameRequests(); });
   </script>
 </body>
 </html>
