@@ -1056,6 +1056,35 @@
     window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
     window.onOfflineSynced = (n) => { /* toast already shown by offline.js */ };
 
+    // Called by offline.js when connection is confirmed Online after being Offline
+    window.onConnectionRestored = async () => {
+      try {
+        shop = await cachedGet("/api/shop/settings");
+        if (shop && shop.name) {
+          document.getElementById("shop-title").textContent = shop.name;
+          applyInventoryModeUI();
+          fillSettingsForm();
+        }
+        await loadItemGroups();
+        await loadDocTypes();
+        await loadProducts();
+        renderPickList(document.getElementById("product-search") && document.getElementById("product-search").value);
+        renderProducts();
+        const active = document.querySelector(".tab-btn.active");
+        if (active && active.dataset.tab === "history") loadHistory();
+        if (active && active.dataset.tab === "reports") { loadReports(); loadTransactions(); }
+        showStatus(statusEl, "Online — data refreshed.", "ok");
+      } catch (e) {
+        if (e && e.message === "unauthorized") {
+          Auth.clear();
+          goTo("index.html");
+          return;
+        }
+        // Soft fail: keep using whatever is on screen / in cache
+        console.warn("refresh after reconnect failed", e);
+      }
+    };
+
     /** Try online write; if offline, queue and optionally apply local optimistic update. */
     async function apiWriteOrQueue({ path, method, body, label, onOffline }) {
       try {
@@ -1976,11 +2005,19 @@
       const btn = document.getElementById("sync-btn");
       btn.disabled = true; btn.textContent = "SYNCING…";
       try {
-        if (!navigator.onLine) { showStatus(statusEl, "You're offline — can't sync yet.", "err"); return; }
+        // Confirm real connectivity (navigator.onLine alone is unreliable on Android)
+        const online = await probeConnection(true);
+        if (!online) { showStatus(statusEl, "You're offline — can't sync yet.", "err"); return; }
         await retryFailedQueue();
         await flushAll();
         shop = await cachedGet("/api/shop/settings");
+        if (shop && shop.name) {
+          document.getElementById("shop-title").textContent = shop.name;
+          applyInventoryModeUI();
+          fillSettingsForm();
+        }
         await loadItemGroups();
+        await loadDocTypes();
         await loadProducts();
         renderPickList(document.getElementById("product-search").value);
         renderProducts();
