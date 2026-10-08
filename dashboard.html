@@ -111,64 +111,87 @@
 
     <!-- PRODUCTS -->
     <section class="tab-panel" id="tab-products">
-      <div class="panel-block">
-        <div class="panel-block-head">
-          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Categories</p>
-        </div>
-        <form id="add-group-form" class="inline-add-form">
-          <div class="field" style="flex:1; min-width:140px; margin-bottom:0;">
-            <label for="ng-name">NEW CATEGORY</label>
-            <input type="text" id="ng-name" placeholder="e.g. Beverages" required>
+      <!-- Sub-nav: one focused section at a time (especially on phone) -->
+      <div class="products-subnav" id="products-subnav" role="tablist" aria-label="Products sections">
+        <button type="button" class="products-subnav-btn active" data-prod-panel="list">List</button>
+        <button type="button" class="products-subnav-btn" data-prod-panel="add">Add item</button>
+        <button type="button" class="products-subnav-btn" data-prod-panel="stock" id="stock-subnav-btn" style="display:none;">Stock</button>
+        <button type="button" class="products-subnav-btn" data-prod-panel="categories">Categories</button>
+      </div>
+
+      <!-- LIST -->
+      <div class="prod-panel active" id="prod-panel-list">
+        <div class="panel-block panel-block-list">
+          <div class="panel-block-head">
+            <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
           </div>
-          <button type="submit" class="btn-sm btn-approve">ADD</button>
-        </form>
-        <div id="categories-list" class="category-chips"></div>
-      </div>
-
-      <div class="panel-block">
-        <div class="panel-block-head">
-          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Add product</p>
+          <div id="product-list"><p class="loading-line">Loading…</p></div>
         </div>
-        <form id="add-product-form" class="product-row-edit add-product-form">
-          <div class="field field-full"><label for="np-name">NAME</label><input type="text" id="np-name" required></div>
-          <div class="field"><label for="np-price">PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
-          <div class="field"><label for="np-cost">COST</label><input type="number" id="np-cost" step="0.01" min="0"></div>
-          <div class="field" id="np-stock-field"><label for="np-stock">STOCK</label><input type="number" id="np-stock" step="0.01" min="0"></div>
-          <div class="field" id="np-minqty-field"><label for="np-minqty">MIN QTY</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
-          <div class="field"><label for="np-discount">DISC %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
-          <div class="field field-full"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
-          <button type="submit" class="btn-sm btn-approve">ADD PRODUCT</button>
-        </form>
-        <p class="shop-card-meta help-desktop">Item codes are assigned automatically. Default discount % auto-fills on the bill; change per sale if needed.</p>
       </div>
 
-      <div id="stockin-section" class="panel-block panel-block-accent" style="display:none;">
-        <div class="panel-block-head">
-          <p class="section-title" style="padding-top:0; border-top:none; margin:0;" id="stockin-section-title">Stock in</p>
-          <div style="display:flex; gap:6px;">
-            <button type="button" class="btn-sm btn-ghost active" id="stock-mode-in-btn">ADD</button>
-            <button type="button" class="btn-sm btn-ghost" id="stock-mode-adjust-btn">ADJUST</button>
+      <!-- ADD ITEM -->
+      <div class="prod-panel" id="prod-panel-add">
+        <div class="panel-block panel-block-add">
+          <div class="panel-block-head">
+            <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Add new product</p>
+          </div>
+          <p class="panel-hint">Create a catalogue item. Item code is assigned automatically.</p>
+          <form id="add-product-form" class="product-row-edit add-product-form">
+            <div class="field field-full"><label for="np-name">PRODUCT NAME</label><input type="text" id="np-name" required placeholder="e.g. Coca Cola 330ml"></div>
+            <div class="field"><label for="np-price">SELL PRICE</label><input type="number" id="np-price" step="0.01" min="0" required></div>
+            <div class="field"><label for="np-cost">COST PRICE</label><input type="number" id="np-cost" step="0.01" min="0"></div>
+            <div class="field" id="np-stock-field"><label for="np-stock">OPENING STOCK</label><input type="number" id="np-stock" step="0.01" min="0" placeholder="0"></div>
+            <div class="field" id="np-minqty-field"><label for="np-minqty">LOW STOCK ALERT</label><input type="number" id="np-minqty" step="1" min="0" placeholder="5"></div>
+            <div class="field"><label for="np-discount">DEFAULT DISC %</label><input type="number" id="np-discount" step="0.01" min="0" max="100" placeholder="0"></div>
+            <div class="field field-full"><label for="np-group">CATEGORY</label><select id="np-group"><option value="">— none —</option></select></div>
+            <button type="submit" class="btn btn-block-action">ADD PRODUCT</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- STOCK (in + adjust) -->
+      <div class="prod-panel" id="prod-panel-stock">
+        <div id="stockin-section" class="panel-block panel-block-stock">
+          <div class="panel-block-head">
+            <p class="section-title" style="padding-top:0; border-top:none; margin:0;" id="stockin-section-title">Stock movement</p>
+          </div>
+          <div class="stock-mode-toggle" role="group" aria-label="Stock mode">
+            <button type="button" class="stock-mode-btn active" id="stock-mode-in-btn">Stock in (receive)</button>
+            <button type="button" class="stock-mode-btn" id="stock-mode-adjust-btn">Adjust (+ / −)</button>
+          </div>
+          <p class="panel-hint" id="stockin-mode-hint">Record goods received from supplier. Qty must be positive. Unit cost updates weighted average cost.</p>
+          <div id="stock-adjust-note-wrap" class="field field-note" style="display:none;">
+            <label for="stock-adjust-note">REASON / NOTE (required)</label>
+            <input type="text" id="stock-adjust-note" maxlength="500" placeholder="e.g. stock count, damaged, theft">
+          </div>
+          <div id="stockin-rows" class="stockin-rows"></div>
+          <div class="panel-block-actions stock-actions">
+            <button type="button" class="btn-sm btn-ghost" id="stockin-add-row-btn">+ LINE</button>
+            <button type="button" class="btn btn-block-action" id="stockin-submit-btn">RECORD STOCK</button>
           </div>
         </div>
-        <p class="shop-card-meta" id="stockin-mode-hint" style="margin:0 0 10px;">Record goods received. Qty must be positive. Unit cost updates weighted average cost.</p>
-        <div id="stock-adjust-note-wrap" class="field" style="display:none; margin-bottom:10px;">
-          <label for="stock-adjust-note">REASON / NOTE (required for adjust)</label>
-          <input type="text" id="stock-adjust-note" maxlength="500" placeholder="e.g. stock count correction, damaged goods">
-        </div>
-        <div id="stockin-rows" class="stockin-rows"></div>
-        <div class="panel-block-actions">
-          <button type="button" class="btn-sm btn-ghost" id="stockin-add-row-btn">+ ITEM</button>
-          <button type="button" class="btn-sm btn-approve" id="stockin-submit-btn">RECORD ALL</button>
+      </div>
+
+      <!-- CATEGORIES -->
+      <div class="prod-panel" id="prod-panel-categories">
+        <div class="panel-block panel-block-categories">
+          <div class="panel-block-head">
+            <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Categories</p>
+          </div>
+          <p class="panel-hint">Group products for bill filters and reports. Rename or delete anytime.</p>
+          <form id="add-group-form" class="inline-add-form category-add-form">
+            <div class="field field-full" style="margin-bottom:0;">
+              <label for="ng-name">NEW CATEGORY NAME</label>
+              <input type="text" id="ng-name" placeholder="e.g. Beverages" required>
+            </div>
+            <button type="submit" class="btn btn-block-action">ADD CATEGORY</button>
+          </form>
+          <div id="categories-list" class="category-chips"></div>
         </div>
       </div>
 
-      <div class="panel-block">
-        <div class="panel-block-head">
-          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
-          <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK</button>
-        </div>
-        <div id="product-list"><p class="loading-line">Loading…</p></div>
-      </div>
+      <!-- hidden legacy toggle target kept for JS compatibility; stock is now a sub-panel -->
+      <button type="button" id="stockin-toggle-btn" style="display:none;" aria-hidden="true"></button>
     </section>
 
     <!-- HISTORY -->
@@ -455,7 +478,11 @@
         document.getElementById("shop-title").textContent = shop.name;
         document.getElementById("np-stock-field").style.display = shop.tracks_inventory ? "" : "none";
         document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
-        document.getElementById("stockin-toggle-btn").style.display = shop.tracks_inventory ? "inline-block" : "none";
+        const stockSub = document.getElementById("stock-subnav-btn");
+        if (stockSub) stockSub.style.display = shop.tracks_inventory ? "" : "none";
+        document.getElementById("stockin-toggle-btn").style.display = "none";
+        if (document.getElementById("np-stock-field")) document.getElementById("np-stock-field").style.display = shop.tracks_inventory ? "" : "none";
+        if (document.getElementById("np-minqty-field")) document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
         fillSettingsForm();
         await loadItemGroups();
         await loadProducts();
@@ -1125,6 +1152,7 @@
         await loadProducts();
         renderProducts();
         renderPickList();
+        showProdPanel("list");
       } catch (err) {
         showStatus(statusEl, err.message, "err");
       }
@@ -1152,7 +1180,7 @@
           </div>
           <div class="product-row-actions">
             <button class="btn-sm btn-ghost" data-action="edit">EDIT</button>
-            ${shop.tracks_inventory ? '<button class="btn-sm btn-ghost" data-action="stockin">STOCK IN</button>' : ""}
+            ${shop.tracks_inventory ? '<button class="btn-sm btn-ghost" data-action="stockin">STOCK</button>' : ""}
             <button class="btn-sm ${p.active ? "btn-reject" : "btn-approve"}" data-action="toggle">${p.active ? "DEACTIVATE" : "ACTIVATE"}</button>
             <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
           </div>
@@ -1209,39 +1237,33 @@
     }
 
     function toggleStockInRow(row, p) {
-      const existing = row.querySelector(".stock-in-row");
-      if (existing) { existing.remove(); return; }
-      const form = document.createElement("form");
-      form.className = "stock-in-row";
-      form.innerHTML = `
-        <div class="field"><label>QTY RECEIVED</label><input type="number" name="qty" step="0.01" min="0" required></div>
-        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" value="${p.cost_price}" required></div>
-        <button type="submit" class="btn-sm btn-approve">RECORD</button>
-      `;
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const qty = parseFloat(form.qty.value);
-        const unit_cost = parseFloat(form.unit_cost.value);
-        const items = [{ product_id: p.id, name: p.name, qty, unit_cost }];
-        try {
-          const res = await apiWriteOrQueue({
-            path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
-            onOffline: async () => {
-              if (p.stock_qty != null) p.stock_qty = (parseFloat(p.stock_qty) || 0) + qty;
-              p.cost_price = unit_cost;
-              await cachePut("/api/products", products);
-            },
-          });
-          showStatus(statusEl, res && res.offline ? "Stock updated (offline)." : "Stock updated.", "ok");
-          await loadProducts();
-          renderProducts();
-          renderPickList();
-        } catch (err) {
-          showStatus(statusEl, err.message, "err");
-        }
-      });
-      row.appendChild(form);
+      // Open dedicated Stock panel with this product pre-selected (clearer on mobile)
+      if (!shop.tracks_inventory) return;
+      showProdPanel("stock");
+      setStockMode("in");
+      stockinRowsEl.innerHTML = "";
+      addStockinRow(p.id);
+      showStatus(statusEl, "Stock panel — product pre-selected. Enter qty (or switch to Adjust).", "ok");
     }
+
+    // ---------- products sub-panels (List / Add / Stock / Categories) ----------
+    function showProdPanel(name) {
+      document.querySelectorAll(".products-subnav-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.prodPanel === name);
+      });
+      document.querySelectorAll(".prod-panel").forEach((p) => {
+        p.classList.toggle("active", p.id === "prod-panel-" + name);
+      });
+      if (name === "stock") {
+        const rows = document.getElementById("stockin-rows");
+        if (rows && !rows.children.length) addStockinRow();
+      }
+    }
+    document.querySelectorAll(".products-subnav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => showProdPanel(btn.dataset.prodPanel));
+    });
+    // default
+    showProdPanel("list");
 
     // ---------- batch stock-in / stock-adjust ----------
     let stockinRowCount = 0;
@@ -1254,10 +1276,10 @@
       const isAdjust = mode === "adjust";
       document.getElementById("stock-mode-in-btn").classList.toggle("active", !isAdjust);
       document.getElementById("stock-mode-adjust-btn").classList.toggle("active", isAdjust);
-      document.getElementById("stockin-section-title").textContent = isAdjust ? "Stock adjust" : "Stock in";
+      document.getElementById("stockin-section-title").textContent = isAdjust ? "Stock adjust" : "Stock in (receive)";
       document.getElementById("stockin-mode-hint").textContent = isAdjust
-        ? "Adjust stock up or down. Use negative qty to remove. A reason is required and is stored on the transaction."
-        : "Record goods received. Qty must be positive. Unit cost updates weighted average cost.";
+        ? "Correct stock levels. Use + qty to increase or − qty to decrease. Reason is required and saved with Txn #."
+        : "Record goods received from supplier. Qty must be positive. Unit cost updates weighted average cost.";
       document.getElementById("stock-adjust-note-wrap").style.display = isAdjust ? "block" : "none";
       // rebuild rows so labels/min match mode
       stockinRowsEl.innerHTML = "";
@@ -1267,9 +1289,7 @@
     document.getElementById("stock-mode-adjust-btn").addEventListener("click", () => setStockMode("adjust"));
 
     document.getElementById("stockin-toggle-btn").addEventListener("click", () => {
-      const showing = stockinSection.style.display !== "none";
-      stockinSection.style.display = showing ? "none" : "block";
-      if (!showing && !stockinRowsEl.children.length) addStockinRow();
+      showProdPanel("stock");
     });
 
     function productOptions(selectedId) {
@@ -1279,7 +1299,7 @@
         .join("");
     }
 
-    function addStockinRow() {
+    function addStockinRow(preselectProductId) {
       const id = ++stockinRowCount;
       const row = document.createElement("div");
       row.className = "stock-in-row";
@@ -1288,8 +1308,8 @@
       const qtyMin = stockMode === "adjust" ? "" : ' min="0"';
       const costReq = stockMode === "adjust" ? "" : " required";
       row.innerHTML = `
-        <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions()}</select></div>
-        <div class="field"><label>${qtyLabel}</label><input type="number" name="qty" step="0.01"${qtyMin} required></div>
+        <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions(preselectProductId)}</select></div>
+        <div class="field"><label>${qtyLabel}</label><input type="number" name="qty" step="0.01"${qtyMin} required placeholder="${stockMode === "adjust" ? "+10 or -3" : "0"}"></div>
         <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0"${costReq}></div>
         <button type="button" class="btn-sm btn-reject" data-action="remove-row">✕</button>
       `;
