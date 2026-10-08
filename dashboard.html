@@ -337,6 +337,18 @@
 
   <div id="print-area"></div>
 
+  <!-- On-screen receipt preview (works on mobile where window.print often fails) -->
+  <div id="receipt-preview" class="receipt-preview" style="display:none;" aria-hidden="true">
+    <div class="receipt-preview-bar">
+      <span class="receipt-preview-title">Receipt preview</span>
+      <div class="receipt-preview-actions">
+        <button type="button" class="btn-sm btn-ghost" id="receipt-preview-close">CLOSE</button>
+        <button type="button" class="btn-sm btn-approve" id="receipt-preview-print">PRINT</button>
+      </div>
+    </div>
+    <div class="receipt-preview-scroll" id="receipt-preview-body"></div>
+  </div>
+
   <div class="modal-overlay" id="modal-overlay" style="display:none;">
     <div class="modal-box">
       <h3 id="modal-title">Edit</h3>
@@ -822,7 +834,7 @@
       const lastActions = document.getElementById("last-sale-actions");
       lastActions.style.display = "block";
       document.getElementById("void-last-btn").style.display = "none"; // can't void what the server hasn't seen yet
-      document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); setTimeout(() => window.print(), 50); };
+      document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); openReceiptPreview(); };
     }
     window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
     window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
@@ -880,11 +892,37 @@
     }
 
     // ---------- printing ----------
+    function openReceiptPreview() {
+      const src = document.getElementById("print-area");
+      const body = document.getElementById("receipt-preview-body");
+      const sheet = document.getElementById("receipt-preview");
+      body.innerHTML = src.innerHTML;
+      sheet.style.display = "flex";
+      sheet.setAttribute("aria-hidden", "false");
+      document.body.classList.add("receipt-preview-open");
+    }
+    function closeReceiptPreview() {
+      const sheet = document.getElementById("receipt-preview");
+      sheet.style.display = "none";
+      sheet.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("receipt-preview-open");
+    }
+    document.getElementById("receipt-preview-close").addEventListener("click", closeReceiptPreview);
+    document.getElementById("receipt-preview-print").addEventListener("click", () => {
+      // Try system print dialog; preview stays open if browser blocks it (common in some WebViews)
+      try { window.print(); } catch (_) {}
+    });
+
     async function printReceipt(docId) {
       try {
         const data = await apiFetch(`/api/documents/${docId}/print`);
         renderPrintArea(data);
-        setTimeout(() => window.print(), 50);
+        openReceiptPreview();
+        // Desktop: also trigger print dialog shortly after preview appears
+        const isNarrow = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+        if (!isNarrow) {
+          setTimeout(() => { try { window.print(); } catch (_) {} }, 80);
+        }
       } catch (e) {
         showStatus(statusEl, e.message, "err");
       }
@@ -1278,8 +1316,8 @@
       document.getElementById("stock-mode-adjust-btn").classList.toggle("active", isAdjust);
       document.getElementById("stockin-section-title").textContent = isAdjust ? "Stock adjust" : "Stock in (receive)";
       document.getElementById("stockin-mode-hint").textContent = isAdjust
-        ? "Correct stock levels. Use + qty to increase or − qty to decrease. Reason is required and saved with Txn #."
-        : "Record goods received from supplier. Qty must be positive. Unit cost updates weighted average cost.";
+        ? "Correct stock levels with + or − qty. Cost uses the product moving average automatically (not typed). Reason is required and saved with Txn #."
+        : "Record goods received from supplier. Qty must be positive. Unit cost updates the weighted average cost.";
       document.getElementById("stock-adjust-note-wrap").style.display = isAdjust ? "block" : "none";
       // rebuild rows so labels/min match mode
       stockinRowsEl.innerHTML = "";
@@ -1304,23 +1342,30 @@
       const row = document.createElement("div");
       row.className = "stock-in-row";
       row.dataset.rowId = id;
-      const qtyLabel = stockMode === "adjust" ? "QTY (+/−)" : "QTY RECEIVED";
-      const qtyMin = stockMode === "adjust" ? "" : ' min="0"';
-      const costReq = stockMode === "adjust" ? "" : " required";
+      const isAdjust = stockMode === "adjust";
+      const qtyLabel = isAdjust ? "QTY (+/−)" : "QTY RECEIVED";
+      const qtyMin = isAdjust ? "" : ' min="0"';
+      // Adjust: cost is moving average from product — not manual entry
+      const costField = isAdjust
+        ? `<div class="field"><label>AVG COST (auto)</label><input type="text" name="avg_cost_display" readonly tabindex="-1" class="input-readonly"></div>`
+        : `<div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" required></div>`;
       row.innerHTML = `
         <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions(preselectProductId)}</select></div>
-        <div class="field"><label>${qtyLabel}</label><input type="number" name="qty" step="0.01"${qtyMin} required placeholder="${stockMode === "adjust" ? "+10 or -3" : "0"}"></div>
-        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0"${costReq}></div>
+        <div class="field"><label>${qtyLabel}</label><input type="number" name="qty" step="0.01"${qtyMin} required placeholder="${isAdjust ? "+10 or -3" : "0"}"></div>
+        ${costField}
         <button type="button" class="btn-sm btn-reject" data-action="remove-row">✕</button>
       `;
       const select = row.querySelector("select[name='product_id']");
-      const costInput = row.querySelector("input[name='unit_cost']");
-      function fillDefaultCost() {
+      function fillCostFromAvg() {
         const opt = select.selectedOptions[0];
-        if (opt) costInput.value = opt.dataset.cost || 0;
+        const cost = opt ? (opt.dataset.cost || "0") : "0";
+        const costInput = row.querySelector("input[name='unit_cost']");
+        const avgDisp = row.querySelector("input[name='avg_cost_display']");
+        if (costInput) costInput.value = cost;
+        if (avgDisp) avgDisp.value = fmtMoney(parseFloat(cost) || 0);
       }
-      select.addEventListener("change", fillDefaultCost);
-      fillDefaultCost();
+      select.addEventListener("change", fillCostFromAvg);
+      fillCostFromAvg();
       row.querySelector('[data-action="remove-row"]').addEventListener("click", () => {
         row.remove();
         if (!stockinRowsEl.children.length) addStockinRow();
@@ -1336,13 +1381,16 @@
       for (const row of rows) {
         const productId = parseInt(row.querySelector("select[name='product_id']").value, 10);
         const qty = parseFloat(row.querySelector("input[name='qty']").value);
-        const unitCostRaw = row.querySelector("input[name='unit_cost']").value;
-        const unitCost = unitCostRaw === "" ? NaN : parseFloat(unitCostRaw);
         if (!productId || isNaN(qty) || qty === 0) continue;
-        if (stockMode === "in" && (qty <= 0 || isNaN(unitCost))) continue;
         const product = products.find((p) => p.id === productId);
         const entry = { product_id: productId, name: product ? product.name : "", qty };
-        if (!isNaN(unitCost)) entry.unit_cost = unitCost;
+        if (stockMode === "in") {
+          const unitCostRaw = row.querySelector("input[name='unit_cost']");
+          const unitCost = unitCostRaw ? parseFloat(unitCostRaw.value) : NaN;
+          if (qty <= 0 || isNaN(unitCost)) continue;
+          entry.unit_cost = unitCost;
+        }
+        // adjust: no unit_cost — server keeps ongoing moving-average cost
         items.push(entry);
       }
       if (!items.length) {
@@ -1370,7 +1418,8 @@
             for (const it of items) {
               const prod = products.find((x) => x.id === it.product_id);
               if (prod && prod.stock_qty != null) prod.stock_qty = (parseFloat(prod.stock_qty) || 0) + it.qty;
-              if (prod && it.unit_cost != null && it.qty > 0) prod.cost_price = it.unit_cost;
+              // Only Stock In changes moving-average cost; Adjust is qty-only
+              if (stockMode === "in" && prod && it.unit_cost != null && it.qty > 0) prod.cost_price = it.unit_cost;
             }
             await cachePut("/api/products", products);
           },
@@ -1390,7 +1439,7 @@
       } catch (err) {
         showStatus(statusEl, err.message, "err");
       } finally {
-        btn.disabled = false; btn.textContent = "RECORD ALL";
+        btn.disabled = false; btn.textContent = "RECORD STOCK";
       }
     });
 

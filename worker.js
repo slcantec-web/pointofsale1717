@@ -225,24 +225,14 @@ async function postDocument(db, { shopId, docType, referenceDocId, items, create
           .bind(newQty, newCost, it.product_id)
           .run();
       } else if (docType === "STOCK_ADJUST") {
-        // Delta adjust (+ or −). Optional unit_cost only applied when increasing stock.
+        // Qty-only delta. Moving-average cost is never rewritten here — only Stock In updates cost.
         const product = await getProduct(it.product_id);
         const currentQty = product.stock_qty || 0;
-        const currentCost = product.cost_price || 0;
-        const delta = it.stock_effect;
-        const newQty = currentQty + delta;
-        if (delta > 0 && typeof it.cost_price === "number" && it.cost_price > 0) {
-          const newCost = newQty > 0 ? (currentQty * currentCost + delta * it.cost_price) / newQty : currentCost;
-          await db
-            .prepare(`UPDATE products SET stock_qty = ?, cost_price = ? WHERE id = ?`)
-            .bind(newQty, newCost, it.product_id)
-            .run();
-        } else {
-          await db
-            .prepare(`UPDATE products SET stock_qty = ? WHERE id = ?`)
-            .bind(newQty, it.product_id)
-            .run();
-        }
+        const newQty = currentQty + it.stock_effect;
+        await db
+          .prepare(`UPDATE products SET stock_qty = ? WHERE id = ?`)
+          .bind(newQty, it.product_id)
+          .run();
       } else {
         // SALE, REVERSAL, STOCK_IN_REVERSAL: just add stock_effect (already signed correctly by caller)
         await db
@@ -1017,14 +1007,16 @@ async function handleStockAdjust(request, env, auth) {
 
   const owned = await loadOwnedProducts(env.DB, auth.shopId, items.map((it) => it.product_id));
 
+  // Cost always comes from the product's ongoing moving-average — never from the client.
   const preparedItems = items.map((it) => {
+    const product = owned.get(it.product_id);
     const absQty = Math.abs(it.qty);
     return {
       product_id: it.product_id,
-      name: it.name || owned.get(it.product_id).name,
+      name: it.name || product.name,
       qty: absQty,
       unit_price: 0,
-      cost_price: typeof it.unit_cost === "number" ? it.unit_cost : owned.get(it.product_id).cost_price || 0,
+      cost_price: product.cost_price || 0,
       discount_amount: 0,
       stock_effect: it.qty, // signed
     };

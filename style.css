@@ -887,8 +887,16 @@ body:has(.app-shell) { padding: 0; }
   @page { margin: 0; size: auto; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body * { visibility: hidden; }
-  #print-area, #print-area * { visibility: visible; }
+  #print-area, #print-area *,
+  #receipt-preview, #receipt-preview * { visibility: visible; }
   #print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; margin: 0; }
+  .receipt-preview-bar { display: none !important; }
+  #receipt-preview {
+    display: block !important;
+    position: absolute; top: 0; left: 0; width: 100%; height: auto;
+    background: #fff; z-index: 99999;
+  }
+  .receipt-preview-scroll { overflow: visible; max-height: none; padding: 0; }
   .print-receipt { width: 80mm; max-width: 80mm; margin: 0; padding: 3mm 4mm; box-shadow: none; }
   .print-receipt.narrow { width: 58mm; max-width: 58mm; padding: 2mm 3mm; }
   .print-receipt.paper-a4 { width: 180mm; max-width: 180mm; padding: 8mm 10mm; font-size: 13px; }
@@ -896,6 +904,59 @@ body:has(.app-shell) { padding: 0; }
   .print-receipt.paper-a4 h2, .print-receipt.paper-letter h2 { font-size: 18px; }
   .print-receipt.paper-a4 table, .print-receipt.paper-letter table { font-size: 12px; }
 }
+
+/* Mobile / in-app receipt preview sheet */
+.receipt-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.55);
+}
+.receipt-preview-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.receipt-preview-title {
+  font-weight: 800;
+  font-size: 15px;
+}
+.receipt-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+.receipt-preview-scroll {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 12px 32px;
+  background: #E8ECF4;
+}
+.receipt-preview-scroll .print-receipt {
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+  border-radius: 8px;
+  margin: 0 auto;
+  max-width: 320px;
+}
+.receipt-preview-scroll .print-receipt.narrow { max-width: 240px; }
+.receipt-preview-scroll .print-receipt.paper-a4,
+.receipt-preview-scroll .print-receipt.paper-letter { max-width: 100%; }
+body.receipt-preview-open { overflow: hidden; }
+
+.input-readonly {
+  background: var(--paper-dim) !important;
+  color: var(--ink-soft) !important;
+  pointer-events: none;
+}
+
 
 .field-full { flex: 1 1 100%; }
 #offline-badge { cursor: pointer; }
