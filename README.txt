@@ -1,16 +1,15 @@
-Original vs Copy prints + reprint history
-=========================================
+Non-inventory (billing-only) hardening
+======================================
+Overwrite: dashboard.html + style.css
 
-1) D1: run migration-print-events.sql
-2) Redeploy worker.js
-3) Upload dashboard.html + style.css
+When shop.tracks_inventory = 0:
+- Stock tab hidden; cannot open stock panel
+- No opening stock / min qty on add product
+- Product list: Code | Name | Price | Cost
+- Bill: no out-of-stock blocking, no stock meta
+- Reports: no stock levels table; type filter only Sale / Sale void
+- Item-wise: Stock ± column hidden
+- Sales, void, print ORIGINAL/COPY, share, history all work
+- Stock in / adjust APIs still reject non-inventory shops on server
 
-Rules
------
-- First confirmed PRINT → slip says ORIGINAL
-- Later confirmed PRINT → slip says COPY
-- Preview alone does NOT count as a print
-- History → "Orig." = paper-jam reprint as ORIGINAL (reason required)
-- History → "Hist" = print history for that txn
-
-Print is recorded only when you tap PRINT on the preview bar.
+No worker/D1 change required for this pass.

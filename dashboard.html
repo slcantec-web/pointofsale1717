@@ -149,7 +149,7 @@
             <input type="hidden" id="ep-id">
             <div class="field field-full"><label for="ep-name">PRODUCT NAME</label><input type="text" id="ep-name" required></div>
             <div class="field"><label for="ep-price">SELL PRICE</label><input type="number" id="ep-price" step="0.01" min="0" required></div>
-            <div class="field"><label for="ep-cost">COST (avg)</label><input type="number" id="ep-cost" step="0.01" min="0"></div>
+            <div class="field"><label for="ep-cost" id="ep-cost-label">COST</label><input type="number" id="ep-cost" step="0.01" min="0"></div>
             <div class="field" id="ep-minqty-field"><label for="ep-minqty">LOW STOCK ALERT</label><input type="number" id="ep-minqty" step="1" min="0"></div>
             <div class="field"><label for="ep-discount">DEFAULT DISC %</label><input type="number" id="ep-discount" step="0.01" min="0" max="100"></div>
             <div class="field field-full"><label for="ep-group">CATEGORY</label><select id="ep-group"><option value="">— none —</option></select></div>
@@ -294,7 +294,7 @@
         <table class="mini-table table-tx">
           <thead><tr>
             <th>Date</th><th>Type</th><th>Doc</th><th>Item</th><th class="col-opt">Group</th>
-            <th>Qty</th><th>Stock ±</th><th>Price</th><th class="col-opt">Disc</th><th>Sale</th><th>Cost</th><th class="keep-case">GP</th>
+            <th>Qty</th><th class="col-stock">Stock ±</th><th>Price</th><th class="col-opt">Disc</th><th>Sale</th><th>Cost</th><th class="keep-case">GP</th>
           </tr></thead>
           <tbody id="tx-body"><tr><td colspan="12" class="loading-line">Loading…</td></tr></tbody>
         </table>
@@ -497,22 +497,45 @@
       if (code === "STOCK_ADJUST") return "dtype-adjust";
       return "dtype-other";
     }
+    function applyInventoryModeUI() {
+      const inv = !!(shop && shop.tracks_inventory);
+      document.body.classList.toggle("mode-inventory", inv);
+      document.body.classList.toggle("mode-billing", !inv);
+      const listHint = document.querySelector(".list-hint");
+      if (listHint) {
+        listHint.innerHTML = inv
+          ? 'Stock in / adjust → <strong>Stock</strong> tab. Change name, price, etc. → <strong>Edit</strong> tab.'
+          : 'Billing-only shop (no stock). Change name, price, etc. → <strong>Edit</strong> tab.';
+      }
+      // Hide stock-related type options when not tracking inventory
+      document.querySelectorAll("#tx-type option, #audit-type option").forEach((opt) => {
+        const v = opt.value;
+        if (v === "STOCK_IN" || v === "STOCK_ADJUST" || v === "STOCK_IN_REVERSAL") {
+          opt.hidden = !inv;
+          opt.disabled = !inv;
+        }
+      });
+    }
+
     async function loadDocTypes() {
       try {
         const rows = await apiFetch("/api/doc-types");
         if (Array.isArray(rows) && rows.length) docTypes = rows;
       } catch (_) { /* keep fallback */ }
+      const inv = !!(shop && shop.tracks_inventory);
+      const visibleTypes = inv ? docTypes : docTypes.filter((t) => t.category === "sale");
       const txType = document.getElementById("tx-type");
       const auditType = document.getElementById("audit-type");
       function fillSelect(sel, withAll) {
         if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = (withAll ? '<option value="">All types</option>' : "") +
-          docTypes.map((t) => '<option value="' + t.code + '">' + escapeHtml(t.label) + "</option>").join("");
+          visibleTypes.map((t) => '<option value="' + t.code + '">' + escapeHtml(t.label) + "</option>").join("");
         if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
       }
       fillSelect(txType, true);
       fillSelect(auditType, true);
+      applyInventoryModeUI();
     }
     function fmtDate(iso) {
       if (!iso) return "—";
@@ -604,6 +627,7 @@
         document.getElementById("stockin-toggle-btn").style.display = "none";
         if (document.getElementById("np-stock-field")) document.getElementById("np-stock-field").style.display = shop.tracks_inventory ? "" : "none";
         if (document.getElementById("np-minqty-field")) document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
+        applyInventoryModeUI();
         fillSettingsForm();
         await loadItemGroups();
         await loadDocTypes();
@@ -1571,6 +1595,8 @@
       document.getElementById("ep-name").value = p.name || "";
       document.getElementById("ep-price").value = p.unit_price ?? 0;
       document.getElementById("ep-cost").value = p.cost_price ?? 0;
+      const costLbl = document.getElementById("ep-cost-label");
+      if (costLbl) costLbl.textContent = (shop && shop.tracks_inventory) ? "COST (avg)" : "COST";
       document.getElementById("ep-discount").value = p.discount_pct || 0;
       const epGroup = document.getElementById("ep-group");
       epGroup.innerHTML = groupOptionsHtml(p.item_group || "");
@@ -1662,13 +1688,15 @@
 
     // ---------- products sub-panels (List / Add / Stock / Categories) ----------
     function showProdPanel(name) {
+      // Billing-only shops: no stock movements panel
+      if (name === "stock" && !(shop && shop.tracks_inventory)) name = "list";
       document.querySelectorAll(".products-subnav-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.prodPanel === name);
       });
       document.querySelectorAll(".prod-panel").forEach((p) => {
         p.classList.toggle("active", p.id === "prod-panel-" + name);
       });
-      if (name === "stock") {
+      if (name === "stock" && shop && shop.tracks_inventory) {
         const rows = document.getElementById("stockin-rows");
         if (rows && !rows.children.length) addStockinRow();
       }
@@ -2012,7 +2040,7 @@
           <td class="td-item">${escapeHtml(r.name)}${r.item_code ? ` <span class="td-code">#${escapeHtml(r.item_code)}</span>` : ""}</td>
           <td class="col-opt">${escapeHtml(r.item_group || "—")}</td>
           <td class="td-num">${r.qty}</td>
-          <td class="td-num">${stockFx > 0 ? "+" : ""}${stockFx}</td>
+          <td class="td-num col-stock">${stockFx > 0 ? "+" : ""}${stockFx}</td>
           <td class="td-num">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.unit_price) : "—"}</td>
           <td class="td-num col-opt">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.discount_amount) : "—"}</td>
           <td class="td-num">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.line_total) : "—"}</td>

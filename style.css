@@ -1489,3 +1489,24 @@ body.receipt-preview-open { overflow: hidden; }
   border-bottom: 1px dashed #000;
 }
 .print-receipt.narrow .pr-copy-banner { font-size: 11px; letter-spacing: 0.12em; }
+
+/* Billing-only (no inventory) — hide stock UI remnants */
+body.mode-billing .col-stock,
+body.mode-billing #stock-subnav-btn,
+body.mode-billing #stock-section-title,
+body.mode-billing #stock-table-wrap {
+  display: none !important;
+}
+body.mode-billing .plist-head,
+body.mode-billing .plist-row {
+  grid-template-columns: 48px minmax(0, 1.6fr) 64px 64px;
+}
+@media (max-width: 900px) {
+  body.mode-billing .plist-head,
+  body.mode-billing .plist-row {
+    grid-template-columns: 40px minmax(0, 1.5fr) 56px 56px;
+  }
+  body.mode-billing .table-tx {
+    min-width: 560px;
+  }
+}
