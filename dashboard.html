@@ -391,9 +391,18 @@
   <!-- On-screen receipt preview (works on mobile where window.print often fails) -->
   <div id="receipt-preview" class="receipt-preview" style="display:none;" aria-hidden="true">
     <div class="receipt-preview-bar">
-      <span class="receipt-preview-title">Receipt preview</span>
+      <span class="receipt-preview-title">Receipt</span>
       <div class="receipt-preview-actions">
         <button type="button" class="btn-sm btn-ghost" id="receipt-preview-close">CLOSE</button>
+        <div class="share-wrap">
+          <button type="button" class="btn-sm btn-ghost" id="receipt-preview-share">SHARE</button>
+          <div class="share-menu" id="receipt-share-menu" style="display:none;" role="menu">
+            <button type="button" class="share-menu-item" data-share="whatsapp">WhatsApp</button>
+            <button type="button" class="share-menu-item" data-share="email">Email</button>
+            <button type="button" class="share-menu-item" data-share="system" id="share-system-btn">More…</button>
+            <button type="button" class="share-menu-item" data-share="copy">Copy text</button>
+          </div>
+        </div>
         <button type="button" class="btn-sm btn-approve" id="receipt-preview-print">PRINT</button>
       </div>
     </div>
@@ -935,7 +944,7 @@
       const lastActions = document.getElementById("last-sale-actions");
       lastActions.style.display = "block";
       document.getElementById("void-last-btn").style.display = "none"; // can't void what the server hasn't seen yet
-      document.getElementById("print-last-btn").onclick = () => { renderPrintArea(receipt); openReceiptPreview(); };
+      document.getElementById("print-last-btn").onclick = () => { lastReceiptData = receipt; renderPrintArea(receipt); openReceiptPreview(); };
     }
     window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
     window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
@@ -992,38 +1001,138 @@
       }
     }
 
-    // ---------- printing ----------
+    // ---------- receipt preview / print / share ----------
+    // PRINT on bill/history only opens the layout. Actual printing is the PRINT
+    // button on the preview bar. SHARE offers WhatsApp, email, system share, copy.
+    let lastReceiptData = null;
+
     function openReceiptPreview() {
       const src = document.getElementById("print-area");
       const body = document.getElementById("receipt-preview-body");
       const sheet = document.getElementById("receipt-preview");
       body.innerHTML = src.innerHTML;
+      document.getElementById("receipt-share-menu").style.display = "none";
       sheet.style.display = "flex";
       sheet.setAttribute("aria-hidden", "false");
       document.body.classList.add("receipt-preview-open");
+      // Show system share only when the browser supports it (phones, some desktops)
+      const sysBtn = document.getElementById("share-system-btn");
+      if (sysBtn) sysBtn.style.display = (navigator.share ? "" : "none");
     }
     function closeReceiptPreview() {
       const sheet = document.getElementById("receipt-preview");
       sheet.style.display = "none";
       sheet.setAttribute("aria-hidden", "true");
       document.body.classList.remove("receipt-preview-open");
+      document.getElementById("receipt-share-menu").style.display = "none";
     }
     document.getElementById("receipt-preview-close").addEventListener("click", closeReceiptPreview);
+
+    // Preview bar PRINT — only here do we open the system print dialog
     document.getElementById("receipt-preview-print").addEventListener("click", () => {
-      // Try system print dialog; preview stays open if browser blocks it (common in some WebViews)
       try { window.print(); } catch (_) {}
     });
 
+    function buildReceiptShareText(data) {
+      if (!data || !data.doc) return "";
+      const shopName = (data.shop && (data.shop.legal_name || data.shop.name)) || "Receipt";
+      const lines = [];
+      lines.push(shopName);
+      if (data.shop && data.shop.address) lines.push(data.shop.address);
+      if (data.shop && data.shop.contact_number) lines.push(String(data.shop.contact_number));
+      lines.push("");
+      lines.push("Txn #" + data.doc.doc_number + "  " + fmtDate(data.doc.created_at));
+      if (data.status && data.status !== "ORIGINAL") lines.push("Status: " + data.status);
+      lines.push("--------------------");
+      (data.items || []).forEach((it) => {
+        const name = it.name || "";
+        const qty = it.qty;
+        const price = fmtMoney(it.unit_price);
+        const tot = fmtMoney(it.line_total);
+        lines.push(name);
+        lines.push("  " + qty + " x " + price + " = " + tot);
+        if (it.discount_amount) lines.push("  discount -" + fmtMoney(it.discount_amount));
+      });
+      lines.push("--------------------");
+      if (data.doc.subtotal != null) lines.push("Subtotal  " + fmtMoney(data.doc.subtotal));
+      if (data.doc.discount_amount) lines.push("Discount  -" + fmtMoney(data.doc.discount_amount));
+      if (data.doc.tax_amount) lines.push("Tax       " + fmtMoney(data.doc.tax_amount));
+      lines.push("TOTAL     " + fmtMoney(data.doc.total));
+      if (data.doc.doc_type === "SALE" && data.doc.received_amount != null) {
+        lines.push("Received  " + fmtMoney(data.doc.received_amount));
+        const bal = data.doc.received_amount - data.doc.total;
+        lines.push((bal < 0 ? "Balance   " : "Change    ") + fmtMoney(Math.abs(bal)));
+      }
+      if (data.shop && data.shop.footer_note) {
+        lines.push("");
+        lines.push(data.shop.footer_note);
+      }
+      return lines.join("\n");
+    }
+
+    document.getElementById("receipt-preview-share").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById("receipt-share-menu");
+      menu.style.display = menu.style.display === "none" ? "block" : "none";
+    });
+    document.addEventListener("click", (e) => {
+      const menu = document.getElementById("receipt-share-menu");
+      const wrap = document.querySelector(".share-wrap");
+      if (menu && wrap && !wrap.contains(e.target)) menu.style.display = "none";
+    });
+
+    document.getElementById("receipt-share-menu").addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-share]");
+      if (!btn) return;
+      const mode = btn.dataset.share;
+      const text = buildReceiptShareText(lastReceiptData);
+      if (!text) {
+        showStatus(statusEl, "Nothing to share yet.", "err");
+        return;
+      }
+      document.getElementById("receipt-share-menu").style.display = "none";
+      const shopName = (lastReceiptData.shop && (lastReceiptData.shop.legal_name || lastReceiptData.shop.name)) || "Receipt";
+      const subject = encodeURIComponent(shopName + " — Txn #" + (lastReceiptData.doc && lastReceiptData.doc.doc_number));
+      const bodyEnc = encodeURIComponent(text);
+
+      try {
+        if (mode === "whatsapp") {
+          // wa.me works on mobile app and desktop WhatsApp Web
+          window.open("https://wa.me/?text=" + bodyEnc, "_blank", "noopener");
+        } else if (mode === "email") {
+          window.location.href = "mailto:?subject=" + subject + "&body=" + bodyEnc;
+        } else if (mode === "copy") {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+          }
+          showStatus(statusEl, "Receipt text copied.", "ok");
+        } else if (mode === "system") {
+          if (navigator.share) {
+            await navigator.share({ title: shopName, text: text });
+          } else {
+            showStatus(statusEl, "System share is not available on this device.", "err");
+          }
+        }
+      } catch (err) {
+        // User cancelled share — ignore; other errors show briefly
+        if (err && err.name !== "AbortError") showStatus(statusEl, err.message || "Share failed.", "err");
+      }
+    });
+
+    // Opens layout only — does NOT call window.print()
     async function printReceipt(docId) {
       try {
         const data = await apiFetch(`/api/documents/${docId}/print`);
+        lastReceiptData = data;
         renderPrintArea(data);
         openReceiptPreview();
-        // Desktop: also trigger print dialog shortly after preview appears
-        const isNarrow = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
-        if (!isNarrow) {
-          setTimeout(() => { try { window.print(); } catch (_) {} }, 80);
-        }
       } catch (e) {
         showStatus(statusEl, e.message, "err");
       }
