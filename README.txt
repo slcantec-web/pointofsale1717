@@ -1,14 +1,12 @@
-Compact product list + separate Edit tab
-========================================
+Mobile density pass — smaller fonts & tighter spacing
+=====================================================
 Overwrite:
-  dashboard.html
   style.css
 
-List shows only:
-  Code | Name | Stock | Cost | Min
-(no EDIT / STOCK / DELETE buttons on rows)
+On phones (≤900px) everything is denser:
+- Body ~12.5px, labels ~10px, inputs ~13px
+- Compact header, nav tabs, panels, bill, cart, tables
+- Product list even tighter
+- More rows / cards visible without long scrolling
 
-- Tap a row → opens Edit tab for that product
-- Stock in / Adjust → use Stock tab
-- Add new item → Add item tab
-- Smaller fonts on mobile so more rows fit
+Hard-refresh the app after upload (or clear site data) so the new CSS loads.
