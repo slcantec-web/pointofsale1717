@@ -1,21 +1,14 @@
-Stock adjust cost + mobile receipt preview
-==========================================
-
-Upload / overwrite:
+Compact product list + separate Edit tab
+========================================
+Overwrite:
   dashboard.html
   style.css
-  worker.js   ← redeploy Cloudflare Worker
 
-1) Stock Adjust cost
-   - No manual unit cost field
-   - Shows "AVG COST (auto)" from product moving average
-   - Server ignores client cost; qty-only change; moving average unchanged
-   - Stock In still asks for unit cost (updates moving average)
+List shows only:
+  Code | Name | Stock | Cost | Min
+(no EDIT / STOCK / DELETE buttons on rows)
 
-2) Mobile print / slip preview
-   - PRINT opens an on-screen receipt preview sheet
-   - CLOSE to dismiss
-   - PRINT on the bar tries the system print dialog
-   - Works when window.print() is blocked in phone browsers / PWA
-
-Hard-refresh the app after deploy (or clear site data) so the new UI loads.
+- Tap a row → opens Edit tab for that product
+- Stock in / Adjust → use Stock tab
+- Add new item → Add item tab
+- Smaller fonts on mobile so more rows fit

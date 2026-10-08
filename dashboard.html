@@ -114,18 +114,56 @@
       <!-- Sub-nav: one focused section at a time (especially on phone) -->
       <div class="products-subnav" id="products-subnav" role="tablist" aria-label="Products sections">
         <button type="button" class="products-subnav-btn active" data-prod-panel="list">List</button>
+        <button type="button" class="products-subnav-btn" data-prod-panel="edit">Edit</button>
         <button type="button" class="products-subnav-btn" data-prod-panel="add">Add item</button>
         <button type="button" class="products-subnav-btn" data-prod-panel="stock" id="stock-subnav-btn" style="display:none;">Stock</button>
         <button type="button" class="products-subnav-btn" data-prod-panel="categories">Categories</button>
       </div>
 
-      <!-- LIST -->
+      <!-- LIST — compact: code, name, stock, cost, min only -->
       <div class="prod-panel active" id="prod-panel-list">
         <div class="panel-block panel-block-list">
           <div class="panel-block-head">
             <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
           </div>
-          <div id="product-list"><p class="loading-line">Loading…</p></div>
+          <p class="panel-hint list-hint">Stock in / adjust → <strong>Stock</strong> tab. Change name, price, etc. → <strong>Edit</strong> tab.</p>
+          <div class="plist-wrap">
+            <div class="plist-head" id="product-list-head"></div>
+            <div id="product-list"><p class="loading-line">Loading…</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EDIT ITEM -->
+      <div class="prod-panel" id="prod-panel-edit">
+        <div class="panel-block panel-block-edit">
+          <div class="panel-block-head">
+            <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Edit product</p>
+          </div>
+          <p class="panel-hint">Pick a product, then update details. Stock quantity is changed only on the Stock tab.</p>
+          <div class="field field-full">
+            <label for="edit-product-select">PRODUCT</label>
+            <select id="edit-product-select"><option value="">— select product —</option></select>
+          </div>
+          <form id="edit-product-form" class="product-row-edit add-product-form" style="display:none;">
+            <input type="hidden" id="ep-id">
+            <div class="field field-full"><label for="ep-name">PRODUCT NAME</label><input type="text" id="ep-name" required></div>
+            <div class="field"><label for="ep-price">SELL PRICE</label><input type="number" id="ep-price" step="0.01" min="0" required></div>
+            <div class="field"><label for="ep-cost">COST (avg)</label><input type="number" id="ep-cost" step="0.01" min="0"></div>
+            <div class="field" id="ep-minqty-field"><label for="ep-minqty">LOW STOCK ALERT</label><input type="number" id="ep-minqty" step="1" min="0"></div>
+            <div class="field"><label for="ep-discount">DEFAULT DISC %</label><input type="number" id="ep-discount" step="0.01" min="0" max="100"></div>
+            <div class="field field-full"><label for="ep-group">CATEGORY</label><select id="ep-group"><option value="">— none —</option></select></div>
+            <div class="field field-full" id="ep-stock-readonly-wrap" style="display:none;">
+              <label>CURRENT STOCK (read-only)</label>
+              <input type="text" id="ep-stock-ro" class="input-readonly" readonly tabindex="-1">
+            </div>
+            <button type="submit" class="btn btn-block-action">SAVE CHANGES</button>
+            <div class="edit-danger-row">
+              <button type="button" class="btn-sm btn-ghost" id="ep-toggle-btn">DEACTIVATE</button>
+              <button type="button" class="btn-sm btn-reject" id="ep-delete-btn">DELETE</button>
+            </div>
+          </form>
+          <p class="empty-line" id="edit-product-empty">Select a product above to edit.</p>
         </div>
       </div>
 
@@ -1016,6 +1054,13 @@
         npGroup.innerHTML = groupOptionsHtml("");
         if ([...npGroup.options].some((o) => o.value === current)) npGroup.value = current;
       }
+      // Edit-product form
+      const epGroup = document.getElementById("ep-group");
+      if (epGroup) {
+        const current = epGroup.value;
+        epGroup.innerHTML = groupOptionsHtml(current);
+        if ([...epGroup.options].some((o) => o.value === current)) epGroup.value = current;
+      }
 
       // Bill quick-filter chips
       const chipsEl = document.getElementById("group-filter");
@@ -1198,81 +1243,164 @@
 
     function renderProducts() {
       const listEl = document.getElementById("product-list");
+      const headEl = document.getElementById("product-list-head");
       listEl.innerHTML = "";
       if (!products.length) {
+        if (headEl) headEl.innerHTML = "";
         listEl.innerHTML = '<p class="empty-line">No products yet.</p>';
+        refreshEditProductSelect();
         return;
+      }
+      const inv = !!(shop && shop.tracks_inventory);
+      if (headEl) {
+        headEl.innerHTML = inv
+          ? '<span class="plist-col code">Code</span><span class="plist-col name">Name</span><span class="plist-col num">Stock</span><span class="plist-col num">Cost</span><span class="plist-col num">Min</span>'
+          : '<span class="plist-col code">Code</span><span class="plist-col name">Name</span><span class="plist-col num">Price</span><span class="plist-col num">Cost</span>';
       }
       products.forEach((p) => {
         const row = document.createElement("div");
-        row.className = "product-row" + (p.active ? "" : " inactive");
-        const discBit = p.discount_pct ? `<span class="sep">·</span>disc ${p.discount_pct}%` : "";
-        const groupBit = p.item_group ? `<span class="sep">·</span>${escapeHtml(p.item_group)}` : "";
-        const meta = shop.tracks_inventory && p.stock_qty !== null
-          ? `code #${escapeHtml(p.item_code)}<span class="sep">·</span>price ${fmtMoney(p.unit_price)}<span class="sep">·</span>cost ${fmtMoney(p.cost_price)}<span class="sep">·</span>${p.stock_qty} in stock<span class="sep">·</span>min ${p.low_stock_threshold ?? 5}${discBit}${groupBit}`
-          : `code #${escapeHtml(p.item_code)}<span class="sep">·</span>price ${fmtMoney(p.unit_price)}<span class="sep">·</span>cost ${fmtMoney(p.cost_price)}${discBit}${groupBit}`;
-        row.innerHTML = `
-          <div>
-            <p class="shop-card-name" style="margin:0;">${escapeHtml(p.name)} ${p.active ? "" : '<span class="stamp rejected">INACTIVE</span>'}</p>
-            <p class="shop-card-meta">${meta}</p>
-          </div>
-          <div class="product-row-actions">
-            <button class="btn-sm btn-ghost" data-action="edit">EDIT</button>
-            ${shop.tracks_inventory ? '<button class="btn-sm btn-ghost" data-action="stockin">STOCK</button>' : ""}
-            <button class="btn-sm ${p.active ? "btn-reject" : "btn-approve"}" data-action="toggle">${p.active ? "DEACTIVATE" : "ACTIVATE"}</button>
-            <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
-          </div>
-        `;
-        row.querySelector('[data-action="edit"]').addEventListener("click", () => toggleEditRow(row, p));
-        if (shop.tracks_inventory) row.querySelector('[data-action="stockin"]').addEventListener("click", () => toggleStockInRow(row, p));
-        row.querySelector('[data-action="toggle"]').addEventListener("click", () => toggleProductActive(p));
-        row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteProduct(p));
+        row.className = "plist-row" + (p.active ? "" : " inactive");
+        row.dataset.productId = p.id;
+        const code = p.item_code != null ? String(p.item_code) : "—";
+        const stock = inv && p.stock_qty != null ? String(p.stock_qty) : (inv ? "—" : "");
+        const cost = fmtMoney(p.cost_price || 0);
+        const min = inv ? String(p.low_stock_threshold ?? 5) : "";
+        const low = inv && p.active && p.stock_qty != null && p.stock_qty <= (p.low_stock_threshold ?? 5);
+        if (low) row.classList.add("low-stock");
+        if (inv) {
+          row.innerHTML =
+            '<span class="plist-col code">#' + escapeHtml(code) + "</span>" +
+            '<span class="plist-col name">' + escapeHtml(p.name) + (p.active ? "" : ' <em class="plist-off">off</em>') + "</span>" +
+            '<span class="plist-col num">' + escapeHtml(stock) + "</span>" +
+            '<span class="plist-col num">' + cost + "</span>" +
+            '<span class="plist-col num">' + escapeHtml(min) + "</span>";
+        } else {
+          row.innerHTML =
+            '<span class="plist-col code">#' + escapeHtml(code) + "</span>" +
+            '<span class="plist-col name">' + escapeHtml(p.name) + (p.active ? "" : ' <em class="plist-off">off</em>') + "</span>" +
+            '<span class="plist-col num">' + fmtMoney(p.unit_price || 0) + "</span>" +
+            '<span class="plist-col num">' + cost + "</span>";
+        }
+        // Tap row → Edit tab for that product (no buttons on list)
+        row.addEventListener("click", () => openEditProduct(p.id));
         listEl.appendChild(row);
       });
+      refreshEditProductSelect();
     }
 
-    function toggleEditRow(row, p) {
-      const existing = row.querySelector(".product-row-edit");
-      if (existing) { existing.remove(); return; }
-      const form = document.createElement("form");
-      form.className = "product-row-edit";
-      form.innerHTML = `
-        <div class="field field-full"><label>NAME</label><input type="text" name="name" value="${escapeHtml(p.name)}"></div>
-        <div class="field"><label>PRICE</label><input type="number" name="unit_price" step="0.01" value="${p.unit_price}"></div>
-        <div class="field"><label>COST</label><input type="number" name="cost_price" step="0.01" value="${p.cost_price}"></div>
-        ${shop.tracks_inventory ? `<div class="field"><label>MIN QTY</label><input type="number" name="low_stock_threshold" step="1" min="0" value="${p.low_stock_threshold ?? 5}"></div>` : ""}
-        <div class="field" style="flex:1 1 150px;"><label>DEFAULT DISCOUNT %</label><input type="number" name="discount_pct" step="0.01" min="0" max="100" value="${p.discount_pct || 0}"></div>
-        <div class="field field-full"><label>CATEGORY</label><select name="item_group">${groupOptionsHtml(p.item_group || "")}</select></div>
-        <button type="submit" class="btn-sm btn-approve">SAVE</button>
-      `;
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        try {
-          const payload = {
-            name: form.name.value.trim(),
-            unit_price: parseFloat(form.unit_price.value) || 0,
-            cost_price: parseFloat(form.cost_price.value) || 0,
-            discount_pct: parseFloat(form.discount_pct.value) || 0,
-            item_group: form.item_group.value || null,
-          };
-          if (shop.tracks_inventory) payload.low_stock_threshold = parseInt(form.low_stock_threshold.value, 10) || 0;
-          const res = await apiWriteOrQueue({
-            path: `/api/products/${p.id}`, method: "PUT", body: payload, label: "Product update",
-            onOffline: async () => {
-              Object.assign(p, payload);
-              await cachePut("/api/products", products);
-            },
-          });
-          showStatus(statusEl, res && res.offline ? "Product updated (offline)." : "Product updated.", "ok");
-          await loadProducts();
-          renderProducts();
-          renderPickList();
-        } catch (err) {
-          showStatus(statusEl, err.message, "err");
-        }
-      });
-      row.appendChild(form);
+    function refreshEditProductSelect() {
+      const sel = document.getElementById("edit-product-select");
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— select product —</option>' +
+        products.map((p) =>
+          '<option value="' + p.id + '">#' + escapeHtml(String(p.item_code || "")) + " · " + escapeHtml(p.name) + (p.active ? "" : " (inactive)") + "</option>"
+        ).join("");
+      if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
     }
+
+    function openEditProduct(productId) {
+      showProdPanel("edit");
+      const sel = document.getElementById("edit-product-select");
+      if (sel) {
+        sel.value = String(productId);
+        fillEditProductForm(productId);
+      }
+    }
+
+    function fillEditProductForm(productId) {
+      const form = document.getElementById("edit-product-form");
+      const empty = document.getElementById("edit-product-empty");
+      const p = products.find((x) => String(x.id) === String(productId));
+      if (!p) {
+        form.style.display = "none";
+        empty.style.display = "";
+        return;
+      }
+      empty.style.display = "none";
+      form.style.display = "";
+      document.getElementById("ep-id").value = p.id;
+      document.getElementById("ep-name").value = p.name || "";
+      document.getElementById("ep-price").value = p.unit_price ?? 0;
+      document.getElementById("ep-cost").value = p.cost_price ?? 0;
+      document.getElementById("ep-discount").value = p.discount_pct || 0;
+      const epGroup = document.getElementById("ep-group");
+      epGroup.innerHTML = groupOptionsHtml(p.item_group || "");
+      const minField = document.getElementById("ep-minqty-field");
+      const stockRo = document.getElementById("ep-stock-readonly-wrap");
+      if (shop && shop.tracks_inventory) {
+        minField.style.display = "";
+        document.getElementById("ep-minqty").value = p.low_stock_threshold ?? 5;
+        stockRo.style.display = "";
+        document.getElementById("ep-stock-ro").value = p.stock_qty != null ? String(p.stock_qty) : "—";
+      } else {
+        minField.style.display = "none";
+        stockRo.style.display = "none";
+      }
+      const tog = document.getElementById("ep-toggle-btn");
+      tog.textContent = p.active ? "DEACTIVATE" : "ACTIVATE";
+      tog.className = "btn-sm " + (p.active ? "btn-reject" : "btn-approve");
+    }
+
+    document.getElementById("edit-product-select").addEventListener("change", (e) => {
+      const v = e.target.value;
+      if (!v) {
+        document.getElementById("edit-product-form").style.display = "none";
+        document.getElementById("edit-product-empty").style.display = "";
+        return;
+      }
+      fillEditProductForm(v);
+    });
+
+    document.getElementById("edit-product-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("ep-id").value;
+      const p = products.find((x) => String(x.id) === String(id));
+      if (!p) return;
+      const payload = {
+        name: document.getElementById("ep-name").value.trim(),
+        unit_price: parseFloat(document.getElementById("ep-price").value) || 0,
+        cost_price: parseFloat(document.getElementById("ep-cost").value) || 0,
+        discount_pct: parseFloat(document.getElementById("ep-discount").value) || 0,
+        item_group: document.getElementById("ep-group").value || null,
+      };
+      if (shop && shop.tracks_inventory) {
+        payload.low_stock_threshold = parseInt(document.getElementById("ep-minqty").value, 10) || 0;
+      }
+      try {
+        const res = await apiWriteOrQueue({
+          path: "/api/products/" + id, method: "PUT", body: payload, label: "Product update",
+          onOffline: async () => {
+            Object.assign(p, payload);
+            await cachePut("/api/products", products);
+          },
+        });
+        showStatus(statusEl, res && res.offline ? "Product updated (offline)." : "Product updated.", "ok");
+        await loadProducts();
+        renderProducts();
+        renderPickList();
+        fillEditProductForm(id);
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      }
+    });
+
+    document.getElementById("ep-toggle-btn").addEventListener("click", async () => {
+      const id = document.getElementById("ep-id").value;
+      const p = products.find((x) => String(x.id) === String(id));
+      if (p) await toggleProductActive(p);
+      fillEditProductForm(id);
+    });
+    document.getElementById("ep-delete-btn").addEventListener("click", async () => {
+      const id = document.getElementById("ep-id").value;
+      const p = products.find((x) => String(x.id) === String(id));
+      if (p) {
+        await deleteProduct(p);
+        document.getElementById("edit-product-select").value = "";
+        document.getElementById("edit-product-form").style.display = "none";
+        document.getElementById("edit-product-empty").style.display = "";
+      }
+    });
 
     function toggleStockInRow(row, p) {
       // Open dedicated Stock panel with this product pre-selected (clearer on mobile)

@@ -470,6 +470,70 @@ body:has(.app-shell) { padding: 0; }
 .panel-block-stock { border-left: 4px solid #0B8F6B; background: #F3FBF8; }
 .panel-block-categories { border-left: 4px solid #A45B2A; }
 .panel-block-list { border-left: 4px solid var(--line); }
+.panel-block-edit { border-left: 4px solid #6B5B95; }
+
+.list-hint { font-size: 12px; margin-bottom: 10px; }
+.plist-wrap { margin: 0 -2px; }
+.plist-head, .plist-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1.4fr) 52px 58px 40px;
+  gap: 4px 6px;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.plist-head {
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+.plist-row {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  border-radius: 0;
+  margin: 0;
+}
+.plist-row:active { background: var(--paper-dim); }
+.plist-row.inactive { opacity: 0.5; }
+.plist-row.low-stock .plist-col.num:nth-child(3) { color: var(--rust); font-weight: 700; }
+.plist-col.code { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 11px; }
+.plist-col.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plist-col.num { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+.plist-off { font-style: normal; font-weight: 600; color: var(--rust); font-size: 10px; }
+.edit-danger-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.edit-danger-row .btn-sm { flex: 1; text-align: center; }
+
+@media (max-width: 900px) {
+  .products-subnav-btn { font-size: 11px; padding: 9px 6px; min-width: 0; }
+  .plist-head, .plist-row {
+    grid-template-columns: 40px minmax(0, 1.3fr) 44px 52px 34px;
+    padding: 5px 6px;
+    font-size: 11px;
+    gap: 3px 4px;
+  }
+  .plist-head { font-size: 9px; }
+  .plist-col.code, .plist-col.num { font-size: 10px; }
+  .plist-col.name { font-size: 11px; font-weight: 600; }
+  .panel-hint, .list-hint { font-size: 11px; }
+  .section-title { font-size: 14px !important; }
+}
+
+/* Billing-only shops: no stock/min columns */
+.plist-head.no-inv, .plist-row.no-inv {
+  grid-template-columns: 48px minmax(0, 1.5fr) 64px 64px;
+}
+
 
 .stock-mode-toggle {
   display: flex;
