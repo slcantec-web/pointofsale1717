@@ -1,14 +1,11 @@
-Auto-approve control — visible ON/OFF on Admin → Pending
-========================================================
+Faster Online recovery
+======================
+Overwrite: offline.js
 
-1) D1: run migration-app-settings.sql (if not already)
-2) Redeploy worker.js
-3) Upload admin.html + style.css
-4) Hard-refresh admin page (Ctrl+Shift+R)
+- Offline retries every 2 seconds (was 4s)
+- Probe timeout ~1.8s while offline (was 5s + 5s sequential)
+- CORS + no-cors probes run in parallel
+- Browser "online" event → show Online immediately, then confirm
+- Timer no longer resets on every failed probe (that was causing delay)
 
-Where to find it
-----------------
-Log in as super admin → open **Pending** tab.
-Blue-bordered card at the top: "Auto-approve after 24 hours" with ON/OFF button.
-
-If the hint says deploy/migration error, the API is missing — finish steps 1–2.
+Hard-refresh or rebuild APK after upload.

@@ -265,14 +265,16 @@ async function discardFailedWrites() {
 }
 
 // Real connectivity state. navigator.onLine alone is unreliable on Android WebView.
-// We probe the Worker; while offline we retry often so recovery is quick.
+// Fast recovery: short timeouts, parallel probes, 2s offline retry, optimistic online event.
 let _connState = true;
 let _connProbeInFlight = false;
 let _connProbeTimer = null;
 let _lastConnNotify = null;
 let _connWatchStarted = false;
+let _connWatchMs = 0; // current interval so we don't reset needlessly
 
 function updateConnectionUI(online) {
+  const prev = _connState;
   const isOnline = online != null ? !!online : _connState;
   _connState = isOnline;
   const chip = document.getElementById("conn-status");
@@ -291,8 +293,8 @@ function updateConnectionUI(online) {
   }
   document.body.classList.toggle("is-offline", !isOnline);
   document.body.classList.toggle("is-online", isOnline);
-  // Speed up retries while offline
-  rescheduleConnWatch();
+  // Only retune the timer when online/offline *changes* (avoid delaying recovery)
+  if (prev !== isOnline) rescheduleConnWatch();
 }
 
 /** Mark offline immediately (e.g. after a failed API call). */
@@ -316,11 +318,15 @@ function markOnline() {
   }
 }
 
+function _fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 /**
- * Probe the live Worker.
- * - Any HTTP response (200/401/404/…) = online (server was reached)
- * - Network failure / abort = offline
- * - Secondary no-cors fetch as fallback (opaque response = reachable)
+ * Fast probe of the Worker.
+ * Parallel short requests (1.8s max) so recovery is near-instant when net returns.
  */
 async function probeConnection(force) {
   if (_connProbeInFlight && !force) return _connState;
@@ -329,41 +335,46 @@ async function probeConnection(force) {
   try {
     if (!base) {
       const guess = typeof navigator === "undefined" || navigator.onLine !== false;
-      updateConnectionUI(guess);
+      if (guess) markOnline();
+      else markOffline();
       return guess;
     }
 
-    // Attempt 1: normal CORS health check
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      const resp = await fetch(base + "/api/health?_=" + Date.now(), {
-        method: "GET",
-        cache: "no-store",
-        signal: ctrl.signal,
-        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-      });
-      clearTimeout(timer);
-      // Reached the server — even non-OK means we have a network path
-      if (resp && (resp.ok || resp.status > 0)) {
-        markOnline();
-        return true;
-      }
-    } catch (_) {
-      // fall through to attempt 2
-    }
+    const bust = Date.now();
+    const timeoutMs = _connState ? 3000 : 1800; // fail faster while offline so we can retry
 
-    // Attempt 2: no-cors — if the promise resolves, the host was reachable
-    try {
-      const ctrl2 = new AbortController();
-      const timer2 = setTimeout(() => ctrl2.abort(), 5000);
-      await fetch(base + "/api/health?_=" + Date.now() + "&nc=1", {
+    // Run CORS + no-cors in parallel — first success wins
+    const cors = _fetchWithTimeout(
+      base + "/api/health?_=" + bust,
+      {
         method: "GET",
-        mode: "no-cors",
         cache: "no-store",
-        signal: ctrl2.signal,
-      });
-      clearTimeout(timer2);
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      },
+      timeoutMs
+    ).then((resp) => {
+      if (resp && (resp.ok || resp.status > 0)) return true;
+      throw new Error("bad status");
+    });
+
+    const nocors = _fetchWithTimeout(
+      base + "/api/health?_=" + bust + "&nc=1",
+      { method: "GET", mode: "no-cors", cache: "no-store" },
+      timeoutMs
+    ).then(() => true); // opaque response still means reachable
+
+    try {
+      // Promise.any may be missing on older WebViews
+      if (typeof Promise.any === "function") {
+        await Promise.any([cors, nocors]);
+      } else {
+        await new Promise((resolve, reject) => {
+          let left = 2;
+          const fail = () => { if (--left === 0) reject(new Error("all failed")); };
+          cors.then(resolve, fail);
+          nocors.then(resolve, fail);
+        });
+      }
       markOnline();
       return true;
     } catch (_) {
@@ -377,12 +388,14 @@ async function probeConnection(force) {
 
 function rescheduleConnWatch() {
   if (!_connWatchStarted) return;
+  // Offline: every 2s. Online: every 20s.
+  const ms = _connState ? 20000 : 2000;
+  if (_connProbeTimer && _connWatchMs === ms) return; // already on the right cadence
   if (_connProbeTimer) {
     clearInterval(_connProbeTimer);
     _connProbeTimer = null;
   }
-  // Offline: check every 4s so we recover quickly. Online: every 15s.
-  const ms = _connState ? 15000 : 4000;
+  _connWatchMs = ms;
   _connProbeTimer = setInterval(() => {
     if (document.visibilityState === "hidden") return;
     probeConnection(true);
@@ -462,7 +475,10 @@ function registerBackgroundSync() {
 }
 
 window.addEventListener("online", () => {
-  // Browser claims online — force probe (do not trust navigator alone)
+  // Instant optimistic Online, then confirm with probe
+  markOnline();
+  updatePendingBadge();
+  scheduleFlush(0);
   probeConnection(true).then((ok) => {
     updatePendingBadge();
     if (ok) scheduleFlush(0);
@@ -484,10 +500,14 @@ document.addEventListener("visibilitychange", () => {
     scheduleFlush(0);
   }
 });
-// Also probe when the phone wakes / network interface changes (when available)
+// Network interface change (mobile data / Wi‑Fi toggle)
 try {
   if (navigator.connection && navigator.connection.addEventListener) {
     navigator.connection.addEventListener("change", () => {
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        markOnline();
+        scheduleFlush(0);
+      }
       probeConnection(true).then(() => updatePendingBadge());
     });
   }
