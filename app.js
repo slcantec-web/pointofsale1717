@@ -102,7 +102,8 @@ function makeNetworkError(msg) {
 }
 
 const Connection = (() => {
-  const PROBE_TIMEOUT_MS = 4000;
+  const PROBE_TIMEOUT_MS = 8000;      // mobile data can be slow to answer; a short timeout caused false "offline"
+  const CONFIRM_GAP_MS = 800;         // wait before the confirming re-check
   const POLL_MIN_MS = 1000;
   const POLL_MAX_MS = 5000;
   const HEARTBEAT_MS = 30000;
@@ -112,6 +113,7 @@ const Connection = (() => {
   let pollTimer = null;
   let pollDelay = POLL_MIN_MS;
   let lastFailAt = 0;
+  let lastOkAt = 0;
   let started = false;
 
   function emit(name, arg) {
@@ -132,24 +134,45 @@ const Connection = (() => {
     emit(online ? "restored" : "lost");
   }
 
+  async function attempt() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+    try {
+      await fetch(`${API_BASE}/api/health?_=${Date.now()}`, { method: "GET", cache: "no-store", signal: ctrl.signal });
+      return true; // any HTTP response means the network path works
+    } catch (_) {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function gotOk() { lastOkAt = Date.now(); set(true); }
+
   // One probe at a time. Callers that arrive while one is running share its result,
   // so a slow-but-successful probe is never thrown away.
+  // Going Online needs ONE success (instant). Going Offline needs TWO failures in a row
+  // (and no other request succeeding in between), so a single slow reply, a network
+  // handoff or a radio wake-up can't flip a working connection to Offline.
   function probe() {
     if (probePromise) return probePromise;
     probePromise = (async () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+      const began = Date.now();
+      const okSince = () => lastOkAt > began; // some other request succeeded while we were checking → network is up
       try {
-        await fetch(`${API_BASE}/api/health?_=${Date.now()}`, { method: "GET", cache: "no-store", signal: ctrl.signal });
-        set(true); // any HTTP response means the network path works
-        return true;
-      } catch (_) {
+        if (await attempt()) { gotOk(); return true; }
+        if (online) {
+          if (okSince()) return true;
+          await _sleep(CONFIRM_GAP_MS);
+          if (okSince()) return true;
+          if (await attempt()) { gotOk(); return true; }
+          if (okSince()) return true;
+        }
         lastFailAt = Date.now();
         set(false);
         startPolling(); // also covers "app opened while already offline" (no state change to trigger it)
         return false;
       } finally {
-        clearTimeout(timer);
         probePromise = null;
       }
     })();
@@ -170,7 +193,7 @@ const Connection = (() => {
   }
 
   // Called by apiFetch
-  function reportReachable() { set(true); }
+  function reportReachable() { lastOkAt = Date.now(); set(true); }
   function reportNetworkFailure() { if (online) probe(); }
 
   // Skip a doomed request for a few seconds after we just confirmed we're offline,
@@ -186,7 +209,7 @@ const Connection = (() => {
     started = true;
     const nudge = () => { probe(); };
     window.addEventListener("online", nudge);
-    window.addEventListener("offline", () => set(false));
+    window.addEventListener("offline", nudge); // a hint only: verified with the two-step check (handoffs fire this spuriously)
     window.addEventListener("pageshow", nudge);
     window.addEventListener("focus", () => { if (!online) nudge(); });
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") nudge(); });
@@ -202,7 +225,8 @@ const Connection = (() => {
     try {
       const N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Network;
       if (N && N.addListener) {
-        const p = N.addListener("networkStatusChange", (s) => { if (s && s.connected) nudge(); else set(false); });
+        // status events flap during Wi-Fi/mobile handoffs, so just verify with the two-step check
+        const p = N.addListener("networkStatusChange", () => { nudge(); });
         if (p && p.catch) p.catch(() => {});
       }
     } catch (_) {}
@@ -308,7 +332,7 @@ async function _apiFetchOnce(path, options, timeoutMs) {
 async function apiFetch(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   // Shorter timeout while we believe we're offline so nothing hangs the till.
-  const timeoutMs = options.timeoutMs != null ? options.timeoutMs : (Connection.online ? 15000 : 6000);
+  const timeoutMs = options.timeoutMs != null ? options.timeoutMs : (Connection.online ? 15000 : 8000);
   try {
     return await _apiFetchOnce(path, options, timeoutMs);
   } catch (e) {
