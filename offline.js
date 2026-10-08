@@ -59,9 +59,11 @@ async function cachedGet(path) {
   try {
     const data = await apiFetch(path);
     OfflineDB.put("cache", data, key).catch(() => {});
+    if (typeof markOnline === "function") markOnline();
     return data;
   } catch (e) {
     if (isNetworkError(e)) {
+      if (typeof markOffline === "function") markOffline();
       const hit = await OfflineDB.get("cache", key);
       if (hit !== undefined) return hit;
     }
@@ -251,8 +253,16 @@ async function discardFailedWrites() {
   updatePendingBadge();
 }
 
+// Real connectivity state. navigator.onLine alone is unreliable on Android WebView
+// (often stays true with mobile data / Wi‑Fi off). We probe the Worker health endpoint.
+let _connState = typeof navigator !== "undefined" ? navigator.onLine : true;
+let _connProbeInFlight = false;
+let _connProbeTimer = null;
+let _lastConnNotify = null;
+
 function updateConnectionUI(online) {
-  const isOnline = online != null ? !!online : (typeof navigator !== "undefined" ? navigator.onLine : true);
+  const isOnline = online != null ? !!online : _connState;
+  _connState = isOnline;
   const chip = document.getElementById("conn-status");
   const banner = document.getElementById("conn-banner");
   if (chip) {
@@ -269,13 +279,93 @@ function updateConnectionUI(online) {
   document.body.classList.toggle("is-online", isOnline);
 }
 
+/** Mark offline immediately (e.g. after a failed API call). */
+function markOffline() {
+  if (_connState) {
+    updateConnectionUI(false);
+    if (_lastConnNotify !== "off") {
+      _lastConnNotify = "off";
+      notifyOffline("You are offline — sales will save on this device");
+    }
+  } else {
+    updateConnectionUI(false);
+  }
+}
+
+/** Mark online after a successful network call. */
+function markOnline() {
+  if (!_connState) {
+    updateConnectionUI(true);
+    if (_lastConnNotify !== "on") {
+      _lastConnNotify = "on";
+      notifyOffline("Back online — syncing…");
+      scheduleFlush(0);
+    }
+  } else {
+    updateConnectionUI(true);
+  }
+}
+
+/**
+ * Probe the live Worker. Uses a short timeout so offline is detected quickly.
+ * Falls back to navigator.onLine only as a quick negative signal.
+ */
+async function probeConnection() {
+  if (_connProbeInFlight) return _connState;
+  _connProbeInFlight = true;
+  try {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      updateConnectionUI(false);
+      return false;
+    }
+    const base = typeof API_BASE !== "undefined" ? API_BASE : "";
+    if (!base) {
+      updateConnectionUI(!!(typeof navigator !== "undefined" && navigator.onLine));
+      return _connState;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const resp = await fetch(base + "/api/health?_=" + Date.now(), {
+        method: "GET",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (resp.ok) {
+        markOnline();
+        return true;
+      }
+      // 5xx / unexpected → treat as offline for the till
+      markOffline();
+      return false;
+    } catch (_) {
+      clearTimeout(timer);
+      markOffline();
+      return false;
+    }
+  } finally {
+    _connProbeInFlight = false;
+  }
+}
+
+function startConnectionWatch() {
+  if (_connProbeTimer) return;
+  // Immediate probe, then every 12s while the app is open
+  probeConnection();
+  _connProbeTimer = setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    probeConnection();
+  }, 12000);
+}
+
 async function updatePendingBadge() {
-  updateConnectionUI();
+  // Don't reset from navigator alone — use last probe result
+  updateConnectionUI(_connState);
   const el = document.getElementById("offline-badge");
   if (!el) return;
   const { total, hasError } = await pendingCount();
   const parts = [];
-  // Connection is shown on #conn-status; badge is only for queue / errors
   if (total) parts.push(total + " unsynced");
   if (hasError) parts.push("sync error");
   el.textContent = parts.join(" · ");
@@ -325,26 +415,25 @@ function registerBackgroundSync() {
 }
 
 window.addEventListener("online", () => {
-  updateConnectionUI(true);
-  updatePendingBadge();
-  notifyOffline("Back online — syncing…");
-  scheduleFlush(0);
+  // Browser *claims* online — verify with a real probe
+  probeConnection().then((ok) => {
+    updatePendingBadge();
+    if (ok) scheduleFlush(0);
+  });
 });
 window.addEventListener("offline", () => {
-  updateConnectionUI(false);
+  markOffline();
   updatePendingBadge();
-  notifyOffline("You are offline — sales will save on this device");
 });
 window.addEventListener("load", () => {
-  updateConnectionUI();
+  startConnectionWatch();
   updatePendingBadge();
   scheduleFlush(500);
 });
-// visibility: when user returns to the tab/app, flush pending work immediately
+// visibility: when user returns to the tab/app, re-probe + flush
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    updateConnectionUI();
-    updatePendingBadge();
+    probeConnection().then(() => updatePendingBadge());
     scheduleFlush(0);
   }
 });

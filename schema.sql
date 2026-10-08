@@ -184,3 +184,9 @@ CREATE TABLE print_events (
 );
 CREATE INDEX idx_print_events_doc ON print_events(document_id, created_at);
 CREATE INDEX idx_print_events_shop ON print_events(shop_id, created_at);
+
+CREATE TABLE app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT INTO app_settings (key, value) VALUES ('auto_approve_shops', '0');

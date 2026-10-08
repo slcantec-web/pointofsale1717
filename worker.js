@@ -585,8 +585,83 @@ async function handleUpdateShopSettings(request, env, auth) {
   return json({ ok: true, paper_size, paper_width });
 }
 
+// ---------- app settings (admin toggles) ----------
+async function getAppSetting(env, key, fallback = null) {
+  try {
+    const row = await env.DB.prepare(`SELECT value FROM app_settings WHERE key = ?`).bind(key).first();
+    return row ? row.value : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function setAppSetting(env, key, value) {
+  await env.DB.prepare(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  )
+    .bind(key, String(value))
+    .run();
+}
+
+/** Auto-approve pending shops older than 24h when the admin toggle is on. */
+async function runAutoApproveIfEnabled(env) {
+  const on = await getAppSetting(env, "auto_approve_shops", "0");
+  if (on !== "1" && on !== "true") return { approved: 0 };
+
+  // SQLite datetime: pending shops created more than 24 hours ago
+  const { results } = await env.DB.prepare(
+    `SELECT id, name FROM shops
+     WHERE status = 'pending'
+       AND datetime(created_at) <= datetime('now', '-24 hours')`
+  ).all();
+
+  let approved = 0;
+  for (const shop of results || []) {
+    await env.DB.prepare(`UPDATE shops SET status = 'active' WHERE id = ? AND status = 'pending'`).bind(shop.id).run();
+    const user = await env.DB.prepare(`SELECT email FROM users WHERE shop_id = ?`).bind(shop.id).first();
+    if (user && user.email) {
+      try {
+        await sendEmail(
+          env,
+          user.email,
+          "Your POS account is approved",
+          `<p>Your shop <strong>${shop.name}</strong> was auto-approved after 24 hours. You can log in now:</p><p><a href="${env.FRONTEND_URL}/index.html">${env.FRONTEND_URL}/index.html</a></p>`
+        );
+      } catch (_) {}
+    }
+    approved += 1;
+  }
+  return { approved };
+}
+
+async function handleGetAdminSettings(request, env, auth) {
+  if (auth.role !== "super_admin") return err("forbidden", 403);
+  const auto = await getAppSetting(env, "auto_approve_shops", "0");
+  return json({
+    auto_approve_shops: auto === "1" || auto === "true",
+  });
+}
+
+async function handleUpdateAdminSettings(request, env, auth) {
+  if (auth.role !== "super_admin") return err("forbidden", 403);
+  const body = await request.json();
+  if (typeof body.auto_approve_shops === "boolean") {
+    await setAppSetting(env, "auto_approve_shops", body.auto_approve_shops ? "1" : "0");
+  }
+  // Run once when enabling so overdue shops activate immediately
+  if (body.auto_approve_shops === true) {
+    await runAutoApproveIfEnabled(env);
+  }
+  return await handleGetAdminSettings(request, env, auth);
+}
+
 async function handleListShops(request, env, auth, url) {
   if (auth.role !== "super_admin") return err("forbidden", 403);
+  // Opportunistic auto-approve when admin opens the list
+  try {
+    await runAutoApproveIfEnabled(env);
+  } catch (_) {}
   const status = url.searchParams.get("status");
   const { results } = status
     ? await env.DB.prepare(`SELECT * FROM shops WHERE status = ? ORDER BY created_at DESC`).bind(status).all()
@@ -1619,7 +1694,18 @@ export default {
     }
 
     try {
-      if (path === "/api/auth/login" && method === "POST") return await handleLogin(request, env);
+      // Public health probe for Online/Offline UI (no auth)
+      if (path === "/api/health" && method === "GET") {
+        return json({ ok: true, t: Date.now() });
+      }
+
+      if (path === "/api/auth/login" && method === "POST") {
+        // Pending shops past 24h may auto-activate before login check
+        try {
+          await runAutoApproveIfEnabled(env);
+        } catch (_) {}
+        return await handleLogin(request, env);
+      }
       if (path === "/api/auth/forgot-password" && method === "POST") return await handleForgotPassword(request, env);
       if (path === "/api/auth/reset-password" && method === "POST") return await handleResetPassword(request, env);
       if (path === "/api/shops/signup/request-otp" && method === "POST") return await handleSignupOtp(request, env);
@@ -1643,6 +1729,9 @@ export default {
       if (nameReqMatch && method === "POST") {
         return await handleResolveNameRequest(request, env, auth, nameReqMatch[1], nameReqMatch[2]);
       }
+
+      if (path === "/api/admin/settings" && method === "GET") return await handleGetAdminSettings(request, env, auth);
+      if (path === "/api/admin/settings" && method === "PUT") return await handleUpdateAdminSettings(request, env, auth);
 
       if (path === "/api/admin/shops" && method === "POST") return await handleCreateShop(request, env, auth);
       if (path === "/api/admin/shops" && method === "GET") return await handleListShops(request, env, auth, url);

@@ -55,6 +55,21 @@
     </div>
 
     <section class="tab-panel active" id="tab-pending">
+      <div class="panel-block" style="margin-bottom:14px;">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Auto-approve</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 10px;">
+          When on, new shops still waiting after <strong>24 hours</strong> are approved automatically
+          (and emailed). Turn off to require manual approval only.
+        </p>
+        <label class="toggle-row" for="auto-approve-toggle">
+          <span class="toggle-label">Auto-approve after 24 hours</span>
+          <input type="checkbox" id="auto-approve-toggle">
+          <span class="toggle-switch" aria-hidden="true"></span>
+        </label>
+        <p class="shop-card-meta" id="auto-approve-hint" style="margin:8px 0 0;"></p>
+      </div>
       <div id="pending-list" class="card-stack">
         <p class="loading-line">Loading…</p>
       </div>
@@ -362,6 +377,44 @@
       return d.innerHTML;
     }
 
+    async function loadAdminSettings() {
+      const toggle = document.getElementById("auto-approve-toggle");
+      const hint = document.getElementById("auto-approve-hint");
+      if (!toggle) return;
+      try {
+        const s = await apiFetch("/api/admin/settings");
+        toggle.checked = !!s.auto_approve_shops;
+        if (hint) {
+          hint.textContent = s.auto_approve_shops
+            ? "On — pending shops older than 24 hours are approved automatically."
+            : "Off — every shop needs manual approve.";
+        }
+      } catch (e) {
+        if (hint) hint.textContent = e.message || "Could not load setting.";
+      }
+    }
+
+    document.getElementById("auto-approve-toggle").addEventListener("change", async (e) => {
+      const on = !!e.target.checked;
+      const hint = document.getElementById("auto-approve-hint");
+      try {
+        const s = await apiFetch("/api/admin/settings", {
+          method: "PUT",
+          body: JSON.stringify({ auto_approve_shops: on }),
+        });
+        if (hint) {
+          hint.textContent = s.auto_approve_shops
+            ? "On — pending shops older than 24 hours are approved automatically."
+            : "Off — every shop needs manual approve.";
+        }
+        showStatus(statusEl, s.auto_approve_shops ? "Auto-approve enabled." : "Auto-approve disabled.", "ok");
+        loadShops();
+      } catch (err) {
+        e.target.checked = !on;
+        showStatus(statusEl, err.message, "err");
+      }
+    });
+
     async function loadShops() {
       try {
         const shops = await apiFetch("/api/admin/shops");
@@ -482,6 +535,7 @@
       });
     });
 
+    loadAdminSettings();
     loadShops();
     loadNameRequests();
   </script>

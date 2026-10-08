@@ -1,16 +1,26 @@
-Online / Offline status indicator
-=================================
-Overwrite:
-  dashboard.html
+1) Real Online/Offline detection
+2) Auto-approve pending shops after 24h (admin toggle)
+=====================================================
+
+D1 Console — run migration-app-settings.sql
+
+Redeploy worker.js
+
+Upload:
   offline.js
+  dashboard.html
   style.css
+  admin.html
 
-What you see
+Online/Offline
+--------------
+- Probes GET /api/health every 12s (not only navigator.onLine)
+- Failed API calls mark Offline; success marks Online
+- Chip + red banner update correctly on mobile when data is off
+
+Auto-approve
 ------------
-- Header chip: green "Online" or red "Offline" (always visible)
-- When offline: red banner under the header
-- Unsynced count still on the yellow badge next to SYNC
-- Toast when connection drops or returns
-
-Works on web and Android APK (same WebView).
-No worker / D1 changes.
+- Admin → Pending tab → "Auto-approve after 24 hours" toggle
+- Default OFF
+- When ON: pending shops older than 24h become active (on list load + on login)
+- Shop receives approval email
