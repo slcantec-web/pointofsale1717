@@ -1,14 +1,14 @@
-Fix: stuck Offline after connection returns
-==========================================
-Overwrite: offline.js
+Auto-approve control — visible ON/OFF on Admin → Pending
+========================================================
 
-Changes
--------
-- While Offline, probe every 4 seconds (was 12s)
-- Any response from the server = Online (not only HTTP 200)
-- Fallback no-cors probe if CORS health fails
-- Tap the Online/Offline chip to force recheck
-- Flush no longer blocked by a sticky navigator.onLine=false
+1) D1: run migration-app-settings.sql (if not already)
+2) Redeploy worker.js
+3) Upload admin.html + style.css
+4) Hard-refresh admin page (Ctrl+Shift+R)
 
-Hard-refresh or rebuild APK after upload.
-Ensure worker.js with /api/health is deployed.
+Where to find it
+----------------
+Log in as super admin → open **Pending** tab.
+Blue-bordered card at the top: "Auto-approve after 24 hours" with ON/OFF button.
+
+If the hint says deploy/migration error, the API is missing — finish steps 1–2.

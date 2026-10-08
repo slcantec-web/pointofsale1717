@@ -1681,3 +1681,61 @@ body.session-locked {
   transform: translateX(18px);
 }
 .toggle-label { flex: 1; }
+
+/* Admin auto-approve setting — high visibility card */
+.admin-setting-card {
+  background: var(--paper);
+  border: 2px solid var(--brand);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 14px rgba(43, 75, 242, 0.08);
+}
+.admin-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.admin-setting-text {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.admin-setting-title {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.admin-setting-desc {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+.admin-setting-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-deep);
+  margin: 0;
+}
+.admin-toggle-btn {
+  flex: none;
+  min-width: 72px;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  padding: 12px 18px !important;
+  border-radius: 12px !important;
+  letter-spacing: 0.04em;
+}
+.admin-toggle-btn.is-off {
+  background: var(--paper-dim) !important;
+  color: var(--ink-soft) !important;
+  border: 2px solid var(--line) !important;
+}
+.admin-toggle-btn.is-on {
+  background: var(--ok) !important;
+  color: #fff !important;
+  border: 2px solid var(--ok) !important;
+}
