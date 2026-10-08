@@ -242,8 +242,8 @@
       </div>
       <div class="mini-table-wrap">
         <table class="mini-table table-history">
-          <thead><tr><th>Doc</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
-          <tbody id="history-body"><tr><td colspan="5" class="loading-line">Loading…</td></tr></tbody>
+          <thead><tr><th>Doc</th><th>Type</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="6" class="loading-line">Loading…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -275,18 +275,28 @@
 
       <p class="section-title">Item-wise transactions</p>
       <div class="filter-row">
+        <div class="field"><label for="tx-type">TYPE</label>
+          <select id="tx-type">
+            <option value="">All types</option>
+            <option value="SALE">Sale</option>
+            <option value="REVERSAL">Sale void</option>
+            <option value="STOCK_IN">Stock in</option>
+            <option value="STOCK_ADJUST">Stock adjust</option>
+            <option value="STOCK_IN_REVERSAL">Stock in void</option>
+          </select>
+        </div>
         <div class="field"><label for="tx-item">ITEM</label><select id="tx-item"><option value="">All items</option></select></div>
         <div class="field"><label for="tx-group">GROUP</label><select id="tx-group"><option value="">All groups</option></select></div>
         <button class="btn-sm btn-ghost" id="tx-apply-btn">APPLY</button>
       </div>
-      <p class="shop-card-meta" style="margin-bottom:10px;">Uses the same FROM/TO date range as above. Every sale line is listed separately, with its own cost and GP — voided lines show in rust and net themselves out.</p>
+      <p class="shop-card-meta" style="margin-bottom:10px;">All document types: sale, void, stock in, stock adjust. Same FROM/TO as above. Stock lines show stock effect; sale lines show price and GP.</p>
       <div class="mini-table-wrap">
         <table class="mini-table table-tx">
           <thead><tr>
-            <th>Date</th><th>Doc</th><th>Item</th><th class="col-opt">Group</th>
-            <th>Qty</th><th>Price</th><th class="col-opt">Disc</th><th>Sale</th><th>Cost</th><th class="keep-case">GP</th>
+            <th>Date</th><th>Type</th><th>Doc</th><th>Item</th><th class="col-opt">Group</th>
+            <th>Qty</th><th>Stock ±</th><th>Price</th><th class="col-opt">Disc</th><th>Sale</th><th>Cost</th><th class="keep-case">GP</th>
           </tr></thead>
-          <tbody id="tx-body"><tr><td colspan="10" class="loading-line">Loading…</td></tr></tbody>
+          <tbody id="tx-body"><tr><td colspan="12" class="loading-line">Loading…</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -457,6 +467,44 @@
       if (e.key === "Escape") closeModal();
     });
     function fmtMoney(n) { return (Number(n) || 0).toFixed(2); }
+
+    // Document types — kept in sync with worker DOC_TYPES / doc_types table
+    const DOC_TYPE_FALLBACK = [
+      { code: "SALE", label: "Sale", category: "sale" },
+      { code: "REVERSAL", label: "Sale void", category: "sale" },
+      { code: "STOCK_IN", label: "Stock in", category: "stock" },
+      { code: "STOCK_ADJUST", label: "Stock adjust", category: "stock" },
+      { code: "STOCK_IN_REVERSAL", label: "Stock in void", category: "stock" },
+    ];
+    let docTypes = DOC_TYPE_FALLBACK.slice();
+    function docTypeLabel(code) {
+      const row = docTypes.find((t) => t.code === code);
+      return row ? row.label : (code || "—");
+    }
+    function docTypeClass(code) {
+      if (code === "SALE") return "dtype-sale";
+      if (code === "REVERSAL" || code === "STOCK_IN_REVERSAL") return "dtype-void";
+      if (code === "STOCK_IN") return "dtype-stockin";
+      if (code === "STOCK_ADJUST") return "dtype-adjust";
+      return "dtype-other";
+    }
+    async function loadDocTypes() {
+      try {
+        const rows = await apiFetch("/api/doc-types");
+        if (Array.isArray(rows) && rows.length) docTypes = rows;
+      } catch (_) { /* keep fallback */ }
+      const txType = document.getElementById("tx-type");
+      const auditType = document.getElementById("audit-type");
+      function fillSelect(sel, withAll) {
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = (withAll ? '<option value="">All types</option>' : "") +
+          docTypes.map((t) => '<option value="' + t.code + '">' + escapeHtml(t.label) + "</option>").join("");
+        if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
+      }
+      fillSelect(txType, true);
+      fillSelect(auditType, true);
+    }
     function fmtDate(iso) {
       if (!iso) return "—";
       const d = new Date(iso.replace(" ", "T") + "Z");
@@ -549,6 +597,7 @@
         if (document.getElementById("np-minqty-field")) document.getElementById("np-minqty-field").style.display = shop.tracks_inventory ? "" : "none";
         fillSettingsForm();
         await loadItemGroups();
+        await loadDocTypes();
         await loadProducts();
         renderPickList();
         renderProducts();
@@ -1676,7 +1725,7 @@
         historyDocs = await cachedGet(`/api/documents?from=${from}&to=${to}&limit=200`);
         renderHistory(historyDocs);
       } catch (e) {
-        body.innerHTML = `<tr><td colspan="5" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="6" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
       }
     }
     function renderHistory(allDocs) {
@@ -1684,12 +1733,13 @@
       body.innerHTML = "";
       const q = document.getElementById("h-search").value.trim();
       const docs = q ? allDocs.filter((d) => String(d.doc_number).includes(q)) : allDocs;
-      if (!docs.length) { body.innerHTML = `<tr><td colspan="5" class="loading-line">${q ? "No sales match that doc #." : "No sales in this range."}</td></tr>`; return; }
+      if (!docs.length) { body.innerHTML = `<tr><td colspan="6" class="loading-line">${q ? "No sales match that doc #." : "No sales in this range."}</td></tr>`; return; }
       docs.forEach((d) => {
         const tr = document.createElement("tr");
         const canEditVoid = d.status === "ORIGINAL" && d.doc_type === "SALE";
         tr.innerHTML = `
           <td class="td-num">#${d.doc_number}</td>
+          <td><span class="dtype ${docTypeClass(d.doc_type)}">${escapeHtml(docTypeLabel(d.doc_type))}</span></td>
           <td><span class="stamp ${d.status === "ORIGINAL" ? "active" : d.status === "CANCELLED" ? "rejected" : ""}">${d.status === "ORIGINAL" ? "OK" : d.status === "CANCELLED" ? "VOID" : d.status}</span></td>
           <td class="td-num">${fmtMoney(d.total)}</td>
           <td class="td-date">${fmtDateShort(d.created_at)}</td>
@@ -1740,38 +1790,45 @@
       const to = document.getElementById("r-to").value;
       const productId = document.getElementById("tx-item").value;
       const group = document.getElementById("tx-group").value;
+      const docType = document.getElementById("tx-type").value;
       const body = document.getElementById("tx-body");
-      body.innerHTML = '<tr><td colspan="10" class="loading-line">Loading…</td></tr>';
+      body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
       try {
         let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
         if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
         if (group) path += `&group=${encodeURIComponent(group)}`;
+        if (docType) path += `&type=${encodeURIComponent(docType)}`;
         const rows = await cachedGet(path);
         renderTransactions(rows);
       } catch (e) {
-        body.innerHTML = `<tr><td colspan="10" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="12" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
       }
     }
     function renderTransactions(rows) {
       const body = document.getElementById("tx-body");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="10" class="loading-line">No transactions in this range.</td></tr>';
+        body.innerHTML = '<tr><td colspan="12" class="loading-line">No transactions in this range.</td></tr>';
         return;
       }
       body.innerHTML = rows.map((r) => {
-        const isReversal = r.doc_type === "REVERSAL";
-        const costTotal = (r.cost_price || 0) * r.qty;
-        return `<tr${isReversal ? ' style="color:var(--rust);"' : ""}>
+        const isVoid = r.doc_type === "REVERSAL" || r.doc_type === "STOCK_IN_REVERSAL";
+        const label = r.doc_type_label || docTypeLabel(r.doc_type);
+        const stockFx = r.stock_effect != null ? r.stock_effect : 0;
+        const costTotal = (r.cost_price || 0) * Math.abs(r.qty || 0);
+        const rowClass = isVoid ? ' style="color:var(--rust);"' : "";
+        return `<tr${rowClass}>
           <td class="td-date">${fmtDateShort(r.created_at)}</td>
-          <td class="td-num">#${r.doc_number}${isReversal ? " v" : ""}</td>
+          <td><span class="dtype ${docTypeClass(r.doc_type)}">${escapeHtml(label)}</span></td>
+          <td class="td-num">#${r.doc_number}</td>
           <td class="td-item">${escapeHtml(r.name)}${r.item_code ? ` <span class="td-code">#${escapeHtml(r.item_code)}</span>` : ""}</td>
           <td class="col-opt">${escapeHtml(r.item_group || "—")}</td>
           <td class="td-num">${r.qty}</td>
-          <td class="td-num">${fmtMoney(r.unit_price)}</td>
-          <td class="td-num col-opt">${fmtMoney(r.discount_amount)}</td>
-          <td class="td-num">${fmtMoney(r.line_total)}</td>
-          <td class="td-num">${fmtMoney(costTotal)}</td>
-          <td class="td-num">${fmtMoney(r.gp_amount)}</td>
+          <td class="td-num">${stockFx > 0 ? "+" : ""}${stockFx}</td>
+          <td class="td-num">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.unit_price) : "—"}</td>
+          <td class="td-num col-opt">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.discount_amount) : "—"}</td>
+          <td class="td-num">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.line_total) : "—"}</td>
+          <td class="td-num">${fmtMoney(r.cost_price || 0)}</td>
+          <td class="td-num">${r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.gp_amount) : "—"}</td>
         </tr>`;
       }).join("");
     }
@@ -1910,11 +1967,11 @@
           tbody.innerHTML = '<tr><td colspan="5" class="loading-line">No transactions in this range.</td></tr>';
           return;
         }
-        const typeLabel = { SALE: "Sale", REVERSAL: "Void", STOCK_IN: "Stock in", STOCK_ADJUST: "Stock adjust", STOCK_IN_REVERSAL: "Stock in void" };
         tbody.innerHTML = rows.map(function (r) {
+          const label = r.doc_type_label || docTypeLabel(r.doc_type);
           return "<tr>" +
             "<td><strong>#" + r.doc_number + "</strong></td>" +
-            "<td>" + (typeLabel[r.doc_type] || r.doc_type) + "</td>" +
+            '<td><span class="dtype ' + docTypeClass(r.doc_type) + '">' + escapeHtml(label) + "</span></td>" +
             "<td>" + fmtDateShort(r.created_at) + "</td>" +
             "<td>" + (r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.total) : "\u2014") + "</td>" +
             "<td>" + escapeHtml(r.note || "\u2014") + "</td>" +

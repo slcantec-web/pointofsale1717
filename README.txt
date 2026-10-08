@@ -1,14 +1,22 @@
-Mobile table fix — History, Reports, Audit
-==========================================
-Overwrite:
-  dashboard.html
-  style.css
+Document types across all transaction reports
+=============================================
 
-Fixes:
-- Cells no longer wrap (date / item / actions stay on one line)
-- Wide tables scroll horizontally instead of stacking
-- Shorter dates in tables (e.g. 08 Oct 13:27)
-- History actions: compact Print / Edit / Void in one row
-- Item-wise, stock, top items, audit tables tightened
+1) D1 Console — run migration-doc-types.sql
+2) Redeploy Worker with worker.js
+3) GitHub — overwrite dashboard.html + style.css
+   (schema files optional, for docs/new installs)
 
-Hard-refresh the app after upload.
+What you get
+------------
+- doc_types table: Sale, Sale void, Stock in, Stock adjust, Stock in void
+- Item-wise transactions report includes ALL types (not only sales)
+- TYPE column + filter on Reports
+- Stock ± column for stock movements
+- History shows Type (Sale / Sale void)
+- Audit log uses same labels
+- Badges work on web + mobile
+
+API
+---
+GET /api/doc-types
+GET /api/reports/transactions?type=STOCK_ADJUST&from=&to=

@@ -1319,7 +1319,11 @@ async function handleAuditLog(request, env, auth, url) {
   binds.push(limit, offset);
 
   const { results } = await env.DB.prepare(sql).bind(...binds).all();
-  return json(results);
+  const enriched = (results || []).map((r) => ({
+    ...r,
+    doc_type_label: docTypeLabel(r.doc_type),
+  }));
+  return json(enriched);
 }
 
 // Sales history list. Scoped to SALE/REVERSAL only (STOCK_IN doesn't belong on a
@@ -1427,20 +1431,52 @@ async function handleReports(request, env, auth, url) {
 
 // Item-wise (line-item) transaction report: every SALE/REVERSAL document_items row in
 // range, each carrying its own sale amount (line_total), cost, and GP — as opposed to
-// /api/reports which only returns items grouped/summed by name. Filterable by product
-// and/or item_group, on top of the date range. REVERSAL rows carry negative qty/amounts
-// (that's how voids are stored) so summing this list nets out correctly either way.
+// Canonical document types (mirrors doc_types table). Used when the table is
+// missing on older DBs so labels still resolve.
+const DOC_TYPES = [
+  { code: "SALE", label: "Sale", category: "sale", sort_order: 10 },
+  { code: "REVERSAL", label: "Sale void", category: "sale", sort_order: 20 },
+  { code: "STOCK_IN", label: "Stock in", category: "stock", sort_order: 30 },
+  { code: "STOCK_ADJUST", label: "Stock adjust", category: "stock", sort_order: 40 },
+  { code: "STOCK_IN_REVERSAL", label: "Stock in void", category: "stock", sort_order: 50 },
+];
+
+function docTypeLabel(code) {
+  const row = DOC_TYPES.find((t) => t.code === code);
+  return row ? row.label : code || "—";
+}
+
+async function handleListDocTypes(request, env, auth) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT code, label, category, sort_order FROM doc_types ORDER BY sort_order, code`
+    ).all();
+    if (results && results.length) return json(results);
+  } catch (_) {
+    // table not migrated yet — fall back to built-in list
+  }
+  return json(DOC_TYPES);
+}
+
+// Item-wise journal across ALL document types (sale, void, stock in, stock adjust…).
+// Filterable by product, item_group, and doc_type. Includes stock_effect so stock
+// movements are clear even when unit_price / GP are zero.
 async function handleTransactionReport(request, env, auth, url) {
   const from = url.searchParams.get("from") || "1970-01-01";
   const to = url.searchParams.get("to") || "2999-12-31";
   const productId = url.searchParams.get("product_id");
   const group = url.searchParams.get("group");
+  const docType = url.searchParams.get("type"); // optional single doc_type code
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10) || 200, 1000);
   const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
-  const conditions = [`d.shop_id = ?`, `d.doc_type IN ('SALE','REVERSAL')`, `date(d.created_at) BETWEEN ? AND ?`];
+  const conditions = [`d.shop_id = ?`, `date(d.created_at) BETWEEN ? AND ?`];
   const params = [auth.shopId, from, to];
 
+  if (docType) {
+    conditions.push(`d.doc_type = ?`);
+    params.push(docType);
+  }
   if (productId) {
     conditions.push(`di.product_id = ?`);
     params.push(productId);
@@ -1453,9 +1489,10 @@ async function handleTransactionReport(request, env, auth, url) {
   params.push(limit, offset);
 
   const { results } = await env.DB.prepare(
-    `SELECT di.id, d.id AS document_id, d.doc_number, d.created_at, d.doc_type,
+    `SELECT di.id, d.id AS document_id, d.doc_number, d.created_at, d.doc_type, d.note,
             di.product_id, di.name, p.item_code, p.item_group,
-            di.qty, di.unit_price, di.discount_amount, di.line_total, di.cost_price, di.gp_amount
+            di.qty, di.unit_price, di.discount_amount, di.line_total, di.cost_price, di.gp_amount,
+            di.stock_effect
      FROM document_items di
      JOIN documents d ON d.id = di.document_id
      LEFT JOIN products p ON p.id = di.product_id
@@ -1466,7 +1503,12 @@ async function handleTransactionReport(request, env, auth, url) {
     .bind(...params)
     .all();
 
-  return json(results);
+  const enriched = (results || []).map((r) => ({
+    ...r,
+    doc_type_label: docTypeLabel(r.doc_type),
+  }));
+
+  return json(enriched);
 }
 
 // ---------- router ----------
@@ -1558,6 +1600,8 @@ export default {
 
       const printMatch = path.match(/^\/api\/documents\/(\d+)\/print$/);
       if (printMatch && method === "GET") return await handlePrint(request, env, auth, printMatch[1]);
+
+      if (path === "/api/doc-types" && method === "GET") return await handleListDocTypes(request, env, auth);
 
       if (path === "/api/reports" && method === "GET") return await handleReports(request, env, auth, url);
       if (path === "/api/reports/transactions" && method === "GET") return await handleTransactionReport(request, env, auth, url);
