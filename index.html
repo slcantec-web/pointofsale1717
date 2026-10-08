@@ -58,6 +58,13 @@
   <script>
     const statusEl = document.getElementById("status");
 
+    // Already logged in (token in localStorage) and under 24h → go straight to app
+    if (Auth.isLoggedIn() && !Auth.isSessionExpired()) {
+      window.location.href = Auth.role === "super_admin" ? "admin.html" : "dashboard.html";
+    } else if (Auth.isLoggedIn() && Auth.isSessionExpired()) {
+      Auth.clear();
+    }
+
     const passwordForm = document.getElementById("password-form");
     const passwordBtn = document.getElementById("password-submit-btn");
 
@@ -76,7 +83,7 @@
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
-        Auth.set({ token: data.token, role: data.role, shopId: data.shopId });
+        Auth.set({ token: data.token, role: data.role, shopId: data.shopId, email });
         goToRoleHome(data.role);
       } catch (e) {
         showStatus(statusEl, e.message, "err");

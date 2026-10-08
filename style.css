@@ -1510,3 +1510,57 @@ body.mode-billing .plist-row {
     min-width: 560px;
   }
 }
+
+/* Session lock overlay (idle) */
+.session-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(11, 16, 32, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.session-lock-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--paper);
+  border-radius: 18px;
+  padding: 24px 22px 18px;
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+}
+.session-lock-title {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.session-lock-sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+.session-lock-email {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  word-break: break-all;
+}
+.session-lock-err {
+  color: var(--rust);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 0;
+}
+.session-lock-logout {
+  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+}
+body.session-locked {
+  overflow: hidden;
+}

@@ -248,7 +248,7 @@ async function postDocument(db, { shopId, docType, referenceDocId, items, create
 
 // ---------- route handlers ----------
 
-const SESSION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days — one device per shop, re-verifying by email every session is friction, not security
+const SESSION_MS = 1000 * 60 * 60 * 24; // 24 hours — full login required after this; client also enforces idle lock
 
 // Sends a password-reset link. The link only loads a page — the token is consumed
 // on the user's actual form submit (handleResetPassword), not on page load. That

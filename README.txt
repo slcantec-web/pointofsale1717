@@ -1,15 +1,21 @@
-Non-inventory (billing-only) hardening
-======================================
-Overwrite: dashboard.html + style.css
+Session: stay logged in + idle lock + 24h full logout
+=====================================================
 
-When shop.tracks_inventory = 0:
-- Stock tab hidden; cannot open stock panel
-- No opening stock / min qty on add product
-- Product list: Code | Name | Price | Cost
-- Bill: no out-of-stock blocking, no stock meta
-- Reports: no stock levels table; type filter only Sale / Sale void
-- Item-wise: Stock ± column hidden
-- Sales, void, print ORIGINAL/COPY, share, history all work
-- Stock in / adjust APIs still reject non-inventory shops on server
+Overwrite:
+  app.js
+  dashboard.html
+  admin.html
+  index.html
+  style.css
+  worker.js   (token lifetime = 24h)
 
-No worker/D1 change required for this pass.
+Behaviour
+---------
+1) Close app / browser tab → stay logged in (token in localStorage)
+2) Reopen → back into the till (no login form) if under 24h
+3) No activity for 20 minutes → lock screen; password unlocks
+4) After 24 hours → full logout; must log in again
+
+Unlock uses the same email + password (email is stored at login).
+If you logged in before this update, log out once and log in again
+so the email is saved for unlock.

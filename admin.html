@@ -77,12 +77,84 @@
     </main>
   </div>
 
+  <div id="session-lock" class="session-lock" style="display:none;" aria-hidden="true">
+    <div class="session-lock-card">
+      <p class="session-lock-title">Screen locked</p>
+      <p class="session-lock-sub">Idle for a while. Enter your password to continue.</p>
+      <p class="session-lock-email" id="lock-email"></p>
+      <form id="session-lock-form">
+        <div class="field">
+          <label for="lock-password">PASSWORD</label>
+          <input type="password" id="lock-password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-block-action" id="lock-unlock-btn">UNLOCK</button>
+      </form>
+      <p class="session-lock-err" id="lock-err" style="display:none;"></p>
+      <button type="button" class="btn-sm btn-ghost session-lock-logout" id="lock-full-logout">LOG OUT</button>
+    </div>
+  </div>
+
   <script src="/app.js"></script>
   <script>
-    // Guard: super admin only
-    if (!Auth.isLoggedIn() || Auth.role !== "super_admin") {
+    // Guard: super admin only + 24h session
+    if (!Auth.isLoggedIn() || Auth.role !== "super_admin" || Auth.isSessionExpired()) {
+      Auth.clear();
       goTo("index.html");
     }
+
+    function showSessionLock() {
+      const el = document.getElementById("session-lock");
+      el.style.display = "flex";
+      el.setAttribute("aria-hidden", "false");
+      document.getElementById("lock-email").textContent = Auth.email || "Enter password";
+      document.getElementById("lock-password").value = "";
+      document.getElementById("lock-err").style.display = "none";
+      document.body.classList.add("session-locked");
+      setTimeout(() => document.getElementById("lock-password").focus(), 50);
+    }
+    function hideSessionLock() {
+      const el = document.getElementById("session-lock");
+      el.style.display = "none";
+      el.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("session-locked");
+    }
+    const _sess = guardSession();
+    if (_sess.locked) showSessionLock();
+    startSessionWatch(showSessionLock);
+
+    document.getElementById("session-lock-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("lock-unlock-btn");
+      const errEl = document.getElementById("lock-err");
+      const password = document.getElementById("lock-password").value;
+      const email = Auth.email;
+      if (!email) {
+        errEl.textContent = "Email missing — please log out and log in again.";
+        errEl.style.display = "block";
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "CHECKING…";
+      errEl.style.display = "none";
+      try {
+        const data = await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        Auth.refreshToken({ token: data.token, role: data.role, shopId: data.shopId });
+        hideSessionLock();
+      } catch (err) {
+        errEl.textContent = err.message || "Wrong password";
+        errEl.style.display = "block";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "UNLOCK";
+      }
+    });
+    document.getElementById("lock-full-logout").addEventListener("click", () => {
+      Auth.clear();
+      goTo("index.html");
+    });
 
     const statusEl = document.getElementById("status");
     const pendingCountEl = document.getElementById("pending-count");
