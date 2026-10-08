@@ -19,6 +19,7 @@
       <span class="nav-pill zero" id="pending-count">— pending</span>
       <div class="nav-tabs">
         <button type="button" class="nav-tab-btn tab-btn active" data-tab="pending" data-title="Awaiting review" data-sub="Shops waiting for approval">Pending</button>
+        <button type="button" class="nav-tab-btn tab-btn" data-tab="name-requests" data-title="Name requests" data-sub="Shop name change requests">Name requests</button>
         <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">Shops</button>
       </div>
       <div class="nav-foot">POS · admin console</div>
@@ -55,6 +56,12 @@
 
     <section class="tab-panel active" id="tab-pending">
       <div id="pending-list" class="card-stack">
+        <p class="loading-line">Loading…</p>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-name-requests">
+      <div id="name-request-list" class="card-stack">
         <p class="loading-line">Loading…</p>
       </div>
     </section>
@@ -341,7 +348,70 @@
       }
     }
 
+    async function loadNameRequests() {
+      const listEl = document.getElementById("name-request-list");
+      try {
+        const rows = await apiFetch("/api/admin/name-requests?status=pending");
+        if (!rows.length) {
+          listEl.innerHTML = '<p class="empty-line">No pending shop name change requests.</p>';
+          return;
+        }
+        listEl.innerHTML = "";
+        rows.forEach((r) => {
+          const wrap = document.createElement("div");
+          wrap.className = "shop-card";
+          wrap.innerHTML = `
+            <div>
+              <p class="shop-card-name">${escapeHtml(r.shop_name)} → <strong>${escapeHtml(r.requested_name)}</strong></p>
+              <p class="shop-card-meta">Current: ${escapeHtml(r.current_name)} · requested ${fmtDate(r.created_at)}${r.note ? " · " + escapeHtml(r.note) : ""}</p>
+            </div>
+            <div class="shop-card-actions">
+              <button class="btn-sm btn-approve" data-action="approve">APPROVE</button>
+              <button class="btn-sm btn-reject" data-action="reject">REJECT</button>
+            </div>
+          `;
+          wrap.querySelector('[data-action="approve"]').addEventListener("click", async (e) => {
+            const btn = e.target;
+            btn.disabled = true; btn.textContent = "APPROVING…";
+            try {
+              await apiFetch(`/api/admin/name-requests/${r.id}/approve`, { method: "POST" });
+              showStatus(statusEl, `Renamed shop to “${r.requested_name}”.`, "ok");
+              await loadNameRequests();
+              await loadShops();
+            } catch (err) {
+              showStatus(statusEl, err.message, "err");
+              btn.disabled = false; btn.textContent = "APPROVE";
+            }
+          });
+          wrap.querySelector('[data-action="reject"]').addEventListener("click", async (e) => {
+            if (!confirm(`Reject name change to “${r.requested_name}”?`)) return;
+            const btn = e.target;
+            btn.disabled = true; btn.textContent = "REJECTING…";
+            try {
+              await apiFetch(`/api/admin/name-requests/${r.id}/reject`, { method: "POST" });
+              showStatus(statusEl, "Name request rejected.", "ok");
+              await loadNameRequests();
+            } catch (err) {
+              showStatus(statusEl, err.message, "err");
+              btn.disabled = false; btn.textContent = "REJECT";
+            }
+          });
+          listEl.appendChild(wrap);
+        });
+      } catch (e) {
+        listEl.innerHTML = `<p class="empty-line">${escapeHtml(e.message)}</p>`;
+      }
+    }
+
+    // refresh name requests when that tab is selected
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.dataset.tab === "name-requests") loadNameRequests();
+      });
+    });
+
     loadShops();
+    loadNameRequests();
   </script>
 </body>
 </html>

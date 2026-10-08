@@ -224,6 +224,25 @@ async function postDocument(db, { shopId, docType, referenceDocId, items, create
           .prepare(`UPDATE products SET stock_qty = ?, cost_price = ? WHERE id = ?`)
           .bind(newQty, newCost, it.product_id)
           .run();
+      } else if (docType === "STOCK_ADJUST") {
+        // Delta adjust (+ or −). Optional unit_cost only applied when increasing stock.
+        const product = await getProduct(it.product_id);
+        const currentQty = product.stock_qty || 0;
+        const currentCost = product.cost_price || 0;
+        const delta = it.stock_effect;
+        const newQty = currentQty + delta;
+        if (delta > 0 && typeof it.cost_price === "number" && it.cost_price > 0) {
+          const newCost = newQty > 0 ? (currentQty * currentCost + delta * it.cost_price) / newQty : currentCost;
+          await db
+            .prepare(`UPDATE products SET stock_qty = ?, cost_price = ? WHERE id = ?`)
+            .bind(newQty, newCost, it.product_id)
+            .run();
+        } else {
+          await db
+            .prepare(`UPDATE products SET stock_qty = ? WHERE id = ?`)
+            .bind(newQty, it.product_id)
+            .run();
+        }
       } else {
         // SALE, REVERSAL, STOCK_IN_REVERSAL: just add stock_effect (already signed correctly by caller)
         await db
@@ -518,16 +537,36 @@ async function handleSetPassword(request, env, auth) {
   return json({ ok: true });
 }
 
+// Normalize paper_size to one of the supported layout keys.
+function normalizePaperSize(v, fallback = "80mm") {
+  const s = String(v || "").trim();
+  if (s === "58mm" || s === "80mm" || s === "A4" || s === "Letter") return s;
+  // legacy numeric paper_width
+  if (s === "58" || Number(v) === 58) return "58mm";
+  if (s === "80" || Number(v) === 80) return "80mm";
+  return fallback;
+}
+
+function paperSizeToWidth(paperSize) {
+  if (paperSize === "58mm") return 58;
+  if (paperSize === "80mm") return 80;
+  if (paperSize === "A4") return 210;
+  if (paperSize === "Letter") return 216;
+  return 80;
+}
+
 // Shop's own settings — the subset of the shops row a shop owner is allowed to see/edit.
 // tracks_inventory is intentionally excluded from the update path: flipping it mid-life
 // would leave stock_qty in an inconsistent state (NULL vs numeric) for existing products.
+// Shop internal `name` is NOT editable here — use the name-request flow instead.
 async function handleGetShopSettings(request, env, auth) {
   const shop = await env.DB.prepare(
-    `SELECT id, name, legal_name, address, contact_number, footer_note, tracks_inventory, paper_width, tax_rate FROM shops WHERE id = ?`
+    `SELECT id, name, legal_name, address, contact_number, footer_note, tracks_inventory, paper_width, paper_size, tax_rate FROM shops WHERE id = ?`
   )
     .bind(auth.shopId)
     .first();
   if (!shop) return err("shop not found", 404);
+  shop.paper_size = normalizePaperSize(shop.paper_size || shop.paper_width, "80mm");
   return json(shop);
 }
 
@@ -540,16 +579,20 @@ async function handleUpdateShopSettings(request, env, auth) {
   const address = body.address ?? shop.address;
   const contact_number = body.contact_number ?? shop.contact_number;
   const footer_note = body.footer_note ?? shop.footer_note;
-  const paper_width = body.paper_width ?? shop.paper_width;
   const tax_rate = body.tax_rate ?? shop.tax_rate;
+  const paper_size = normalizePaperSize(
+    body.paper_size ?? body.paper_width ?? shop.paper_size ?? shop.paper_width,
+    "80mm"
+  );
+  const paper_width = paperSizeToWidth(paper_size);
 
   await env.DB.prepare(
-    `UPDATE shops SET legal_name = ?, address = ?, contact_number = ?, footer_note = ?, paper_width = ?, tax_rate = ? WHERE id = ?`
+    `UPDATE shops SET legal_name = ?, address = ?, contact_number = ?, footer_note = ?, paper_width = ?, paper_size = ?, tax_rate = ? WHERE id = ?`
   )
-    .bind(legal_name, address, contact_number, footer_note, paper_width, tax_rate, auth.shopId)
+    .bind(legal_name, address, contact_number, footer_note, paper_width, paper_size, tax_rate, auth.shopId)
     .run();
 
-  return json({ ok: true });
+  return json({ ok: true, paper_size, paper_width });
 }
 
 async function handleListShops(request, env, auth, url) {
@@ -949,6 +992,51 @@ async function handleStockIn(request, env, auth) {
     items: preparedItems,
     createdBy: auth.userId,
     tracksInventory: true,
+    note: body.note || null,
+  });
+
+  return json(result);
+}
+
+// Stock adjust: signed delta per line (positive = increase, negative = decrease).
+// Unlike STOCK_IN, qty can be negative and cost is optional (only used when increasing).
+// Requires a note for audit. Generates a sequential doc_number (transaction id).
+async function handleStockAdjust(request, env, auth) {
+  const shop = await env.DB.prepare(`SELECT * FROM shops WHERE id = ?`).bind(auth.shopId).first();
+  if (!shop.tracks_inventory) return err("this shop is not in inventory mode");
+
+  const body = await request.json();
+  const items = body.items; // [{ product_id, qty (+/−), unit_cost? }]
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+  if (!Array.isArray(items) || !items.length) return err("items required");
+  if (!note) return err("a reason/note is required for stock adjustments");
+  if (items.some((it) => !it.product_id)) return err("product_id required for every adjust line");
+  if (items.some((it) => typeof it.qty !== "number" || !it.qty || isNaN(it.qty))) {
+    return err("each line needs a non-zero qty (positive to add, negative to remove)");
+  }
+
+  const owned = await loadOwnedProducts(env.DB, auth.shopId, items.map((it) => it.product_id));
+
+  const preparedItems = items.map((it) => {
+    const absQty = Math.abs(it.qty);
+    return {
+      product_id: it.product_id,
+      name: it.name || owned.get(it.product_id).name,
+      qty: absQty,
+      unit_price: 0,
+      cost_price: typeof it.unit_cost === "number" ? it.unit_cost : owned.get(it.product_id).cost_price || 0,
+      discount_amount: 0,
+      stock_effect: it.qty, // signed
+    };
+  });
+
+  const result = await postDocument(env.DB, {
+    shopId: auth.shopId,
+    docType: "STOCK_ADJUST",
+    items: preparedItems,
+    createdBy: auth.userId,
+    tracksInventory: true,
+    note,
   });
 
   return json(result);
@@ -1116,14 +1204,130 @@ async function handlePrint(request, env, auth, docId) {
 
   await env.DB.prepare(`UPDATE documents SET print_count = print_count + 1 WHERE id = ?`).bind(docId).run();
 
+  const paper_size = normalizePaperSize(shop.paper_size || shop.paper_width, "80mm");
+
   return json({
-    shop: { legal_name: shop.legal_name, address: shop.address, contact_number: shop.contact_number, footer_note: shop.footer_note, paper_width: shop.paper_width },
+    shop: {
+      legal_name: shop.legal_name,
+      address: shop.address,
+      contact_number: shop.contact_number,
+      footer_note: shop.footer_note,
+      paper_width: shop.paper_width,
+      paper_size,
+    },
     doc,
     items,
     status,
     print_count: doc.print_count + 1,
     is_reprint: doc.print_count + 1 > 1,
   });
+}
+
+// ---------- shop name change request (shop → super_admin) ----------
+
+async function handleCreateNameRequest(request, env, auth) {
+  if (auth.role !== "shop") return err("forbidden", 403);
+  const body = await request.json();
+  const requested = typeof body.requested_name === "string" ? body.requested_name.trim() : "";
+  if (!requested || requested.length < 2) return err("requested name must be at least 2 characters");
+  if (requested.length > 120) return err("requested name is too long");
+
+  const shop = await env.DB.prepare(`SELECT id, name FROM shops WHERE id = ?`).bind(auth.shopId).first();
+  if (!shop) return err("shop not found", 404);
+  if (requested === shop.name) return err("requested name is the same as the current name");
+
+  const pending = await env.DB.prepare(
+    `SELECT id FROM shop_name_requests WHERE shop_id = ? AND status = 'pending'`
+  )
+    .bind(auth.shopId)
+    .first();
+  if (pending) return err("you already have a pending name-change request", 409);
+
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
+  const result = await env.DB.prepare(
+    `INSERT INTO shop_name_requests (shop_id, current_name, requested_name, note) VALUES (?, ?, ?, ?)`
+  )
+    .bind(auth.shopId, shop.name, requested, note)
+    .run();
+
+  return json({ ok: true, id: result.meta.last_row_id, current_name: shop.name, requested_name: requested });
+}
+
+async function handleGetMyNameRequest(request, env, auth) {
+  if (auth.role !== "shop") return err("forbidden", 403);
+  const row = await env.DB.prepare(
+    `SELECT id, current_name, requested_name, status, note, created_at, resolved_at
+     FROM shop_name_requests WHERE shop_id = ? ORDER BY created_at DESC LIMIT 1`
+  )
+    .bind(auth.shopId)
+    .first();
+  return json(row || null);
+}
+
+async function handleListNameRequests(request, env, auth, url) {
+  if (auth.role !== "super_admin") return err("forbidden", 403);
+  const status = url.searchParams.get("status") || "pending";
+  const { results } = await env.DB.prepare(
+    `SELECT r.*, s.name AS shop_name, s.legal_name
+     FROM shop_name_requests r
+     JOIN shops s ON s.id = r.shop_id
+     WHERE r.status = ?
+     ORDER BY r.created_at ASC`
+  )
+    .bind(status)
+    .all();
+  return json(results);
+}
+
+async function handleResolveNameRequest(request, env, auth, requestId, action) {
+  if (auth.role !== "super_admin") return err("forbidden", 403);
+  if (action !== "approve" && action !== "reject") return err("invalid action");
+
+  const row = await env.DB.prepare(`SELECT * FROM shop_name_requests WHERE id = ?`).bind(requestId).first();
+  if (!row) return err("request not found", 404);
+  if (row.status !== "pending") return err("request already resolved", 409);
+
+  if (action === "approve") {
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE shops SET name = ? WHERE id = ?`).bind(row.requested_name, row.shop_id),
+      env.DB.prepare(
+        `UPDATE shop_name_requests SET status = 'approved', resolved_at = datetime('now'), resolved_by = ? WHERE id = ?`
+      ).bind(auth.userId, requestId),
+    ]);
+  } else {
+    await env.DB.prepare(
+      `UPDATE shop_name_requests SET status = 'rejected', resolved_at = datetime('now'), resolved_by = ? WHERE id = ?`
+    )
+      .bind(auth.userId, requestId)
+      .run();
+  }
+
+  return json({ ok: true, action, shop_id: row.shop_id, requested_name: row.requested_name });
+}
+
+// Audit log: all documents for this shop (sales, stock-in, stock-adjust, voids) with transaction ids.
+async function handleAuditLog(request, env, auth, url) {
+  const from = url.searchParams.get("from") || "1970-01-01";
+  const to = url.searchParams.get("to") || "9999-12-31";
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10) || 100, 500);
+  const offset = parseInt(url.searchParams.get("offset") || "0", 10) || 0;
+  const docType = url.searchParams.get("type"); // optional filter
+
+  let sql = `SELECT d.id, d.doc_type, d.doc_number, d.subtotal, d.discount_amount, d.tax_amount, d.total,
+                     d.received_amount, d.balance_due, d.note, d.created_at, d.created_by, d.reference_doc_id,
+                     d.print_count
+              FROM documents d
+              WHERE d.shop_id = ? AND date(d.created_at) >= date(?) AND date(d.created_at) <= date(?)`;
+  const binds = [auth.shopId, from, to];
+  if (docType) {
+    sql += ` AND d.doc_type = ?`;
+    binds.push(docType);
+  }
+  sql += ` ORDER BY d.created_at DESC, d.doc_number DESC LIMIT ? OFFSET ?`;
+  binds.push(limit, offset);
+
+  const { results } = await env.DB.prepare(sql).bind(...binds).all();
+  return json(results);
 }
 
 // Sales history list. Scoped to SALE/REVERSAL only (STOCK_IN doesn't belong on a
@@ -1307,6 +1511,16 @@ export default {
       if (path === "/api/shop/settings" && method === "GET") return await handleGetShopSettings(request, env, auth);
       if (path === "/api/shop/settings" && method === "PUT") return await handleUpdateShopSettings(request, env, auth);
 
+      if (path === "/api/shop/name-request" && method === "POST") return await handleCreateNameRequest(request, env, auth);
+      if (path === "/api/shop/name-request" && method === "GET") return await handleGetMyNameRequest(request, env, auth);
+      if (path === "/api/shop/audit-log" && method === "GET") return await handleAuditLog(request, env, auth, url);
+
+      if (path === "/api/admin/name-requests" && method === "GET") return await handleListNameRequests(request, env, auth, url);
+      const nameReqMatch = path.match(/^\/api\/admin\/name-requests\/(\d+)\/(approve|reject)$/);
+      if (nameReqMatch && method === "POST") {
+        return await handleResolveNameRequest(request, env, auth, nameReqMatch[1], nameReqMatch[2]);
+      }
+
       if (path === "/api/admin/shops" && method === "POST") return await handleCreateShop(request, env, auth);
       if (path === "/api/admin/shops" && method === "GET") return await handleListShops(request, env, auth, url);
       const approveMatch = path.match(/^\/api\/admin\/shops\/(\d+)\/approve$/);
@@ -1337,6 +1551,7 @@ export default {
       if (productMatch && method === "DELETE") return await handleDeleteProduct(request, env, auth, productMatch[1]);
 
       if (path === "/api/documents/stock-in" && method === "POST") return await handleStockIn(request, env, auth);
+      if (path === "/api/documents/stock-adjust" && method === "POST") return await handleStockAdjust(request, env, auth);
       if (path === "/api/documents/sale" && method === "POST") return await handleSale(request, env, auth);
       if (path === "/api/documents" && method === "GET") return await handleListDocuments(request, env, auth, url);
 

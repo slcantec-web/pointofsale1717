@@ -144,7 +144,16 @@
 
       <div id="stockin-section" class="panel-block panel-block-accent" style="display:none;">
         <div class="panel-block-head">
-          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Stock in</p>
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;" id="stockin-section-title">Stock in</p>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="btn-sm btn-ghost active" id="stock-mode-in-btn">ADD</button>
+            <button type="button" class="btn-sm btn-ghost" id="stock-mode-adjust-btn">ADJUST</button>
+          </div>
+        </div>
+        <p class="shop-card-meta" id="stockin-mode-hint" style="margin:0 0 10px;">Record goods received. Qty must be positive. Unit cost updates weighted average cost.</p>
+        <div id="stock-adjust-note-wrap" class="field" style="display:none; margin-bottom:10px;">
+          <label for="stock-adjust-note">REASON / NOTE (required for adjust)</label>
+          <input type="text" id="stock-adjust-note" maxlength="500" placeholder="e.g. stock count correction, damaged goods">
         </div>
         <div id="stockin-rows" class="stockin-rows"></div>
         <div class="panel-block-actions">
@@ -156,7 +165,7 @@
       <div class="panel-block">
         <div class="panel-block-head">
           <p class="section-title" style="padding-top:0; border-top:none; margin:0;">All products</p>
-          <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK IN</button>
+          <button type="button" class="btn-sm btn-ghost" id="stockin-toggle-btn" style="display:none;">STOCK</button>
         </div>
         <div id="product-list"><p class="loading-line">Loading…</p></div>
       </div>
@@ -225,20 +234,68 @@
           <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Shop details</p>
         </div>
         <form id="settings-form">
+          <div class="field"><label>SHOP NAME (internal)</label><input type="text" id="s-shop-name" readonly disabled></div>
           <div class="field"><label for="s-legal-name">NAME ON RECEIPT</label><input type="text" id="s-legal-name"></div>
           <div class="field"><label for="s-address">ADDRESS</label><input type="text" id="s-address"></div>
           <div class="field"><label for="s-contact">CONTACT NUMBER</label><input type="text" id="s-contact"></div>
           <div class="field"><label for="s-footer">RECEIPT FOOTER NOTE</label><input type="text" id="s-footer" placeholder="e.g. Thank you, come again"></div>
           <div class="field">
-            <label for="s-paper">PAPER WIDTH</label>
+            <label for="s-paper">PRINTER / PAPER SIZE</label>
             <select id="s-paper">
-              <option value="80">80mm</option>
-              <option value="58">58mm</option>
+              <option value="80mm">Thermal 80mm</option>
+              <option value="58mm">Thermal 58mm</option>
+              <option value="A4">A4</option>
+              <option value="Letter">Letter</option>
             </select>
           </div>
           <div class="field"><label for="s-tax">TAX RATE (%)</label><input type="number" id="s-tax" step="0.01" min="0"></div>
           <button type="submit" class="btn" id="settings-save-btn">SAVE SETTINGS</button>
         </form>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Request shop name change</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 12px;">Internal shop name can only be changed by the main admin. Submit a request and they will approve it from the admin panel.</p>
+        <div id="name-request-status" class="shop-card-meta" style="margin:0 0 10px;"></div>
+        <form id="name-request-form" class="inline-add-form" style="display:flex; flex-wrap:wrap; gap:10px; align-items:end;">
+          <div class="field" style="flex:1 1 180px;"><label for="nr-name">NEW SHOP NAME</label><input type="text" id="nr-name" required minlength="2" maxlength="120"></div>
+          <div class="field" style="flex:1 1 180px;"><label for="nr-note">REASON (optional)</label><input type="text" id="nr-note" maxlength="500"></div>
+          <button type="submit" class="btn-sm btn-approve" id="nr-submit-btn">SUBMIT REQUEST</button>
+        </form>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">Audit log</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 12px;">Every bill, stock-in, stock adjust and void gets a sequential transaction ID (Doc #). Filter and review the full journal here.</p>
+        <div class="report-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+          <div class="field" style="margin:0;"><label for="audit-from">FROM</label><input type="date" id="audit-from"></div>
+          <div class="field" style="margin:0;"><label for="audit-to">TO</label><input type="date" id="audit-to"></div>
+          <div class="field" style="margin:0;">
+            <label for="audit-type">TYPE</label>
+            <select id="audit-type">
+              <option value="">All</option>
+              <option value="SALE">Sale</option>
+              <option value="REVERSAL">Void / Reversal</option>
+              <option value="STOCK_IN">Stock in</option>
+              <option value="STOCK_ADJUST">Stock adjust</option>
+            </select>
+          </div>
+          <button type="button" class="btn-sm btn-ghost" id="audit-load-btn" style="align-self:end;">LOAD</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="audit-table">
+            <thead>
+              <tr><th>Txn #</th><th>Type</th><th>Date</th><th>Total</th><th>Note</th></tr>
+            </thead>
+            <tbody id="audit-tbody">
+              <tr><td colspan="5" class="shop-card-meta">Load the log to view transactions.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="panel-block">
@@ -805,8 +862,17 @@
         showStatus(statusEl, e.message, "err");
       }
     }
+    function paperSizeClass(shop) {
+      const ps = (shop && (shop.paper_size || shop.paper_width)) || "80mm";
+      if (ps === "58mm" || ps === 58 || ps === "58") return "narrow";
+      if (ps === "A4") return "paper-a4";
+      if (ps === "Letter") return "paper-letter";
+      return ""; // 80mm default
+    }
     function renderPrintArea(data) {
-      const narrow = data.shop.paper_width === 58;
+      const sizeClass = paperSizeClass(data.shop);
+      const pageClass = sizeClass ? " " + sizeClass : "";
+      const isPage = sizeClass === "paper-a4" || sizeClass === "paper-letter";
       const itemsHtml = data.items.map((it) => `
         <tr><td colspan="2">${it.item_code ? `#${escapeHtml(it.item_code)} · ` : ""}${escapeHtml(it.name)}</td></tr>
         <tr><td>${it.qty} × ${fmtMoney(it.unit_price)}</td><td class="pr-right">${fmtMoney(it.line_total)}</td></tr>
@@ -816,11 +882,11 @@
       const hasPayment = data.doc.doc_type === "SALE" && received !== null && received !== undefined;
       const balance = hasPayment ? received - data.doc.total : 0;
       document.getElementById("print-area").innerHTML = `
-        <div class="print-receipt${narrow ? " narrow" : ""}">
+        <div class="print-receipt${pageClass}">
           <h2>${escapeHtml(data.shop.legal_name || "")}</h2>
           <div class="pr-meta">${escapeHtml(data.shop.address || "")}${data.shop.contact_number ? " · " + escapeHtml(data.shop.contact_number) : ""}</div>
           ${data.status !== "ORIGINAL" ? `<div class="pr-status">${data.status}</div>` : ""}
-          <div class="pr-meta">Doc #${data.doc.doc_number} · ${fmtDate(data.doc.created_at)}</div>
+          <div class="pr-meta">Txn #${data.doc.doc_number} · ${fmtDate(data.doc.created_at)}</div>
           <hr>
           <table>${itemsHtml}</table>
           <hr>
@@ -837,6 +903,19 @@
           ${data.is_reprint ? `<div class="pr-meta">Reprint #${data.print_count}</div>` : ""}
         </div>
       `;
+      // Hint browser page size for A4 / Letter
+      let styleEl = document.getElementById("print-page-style");
+      if (!styleEl) {
+        styleEl = document.createElement("style");
+        styleEl.id = "print-page-style";
+        document.head.appendChild(styleEl);
+      }
+      if (isPage) {
+        const size = sizeClass === "paper-a4" ? "A4" : "letter";
+        styleEl.textContent = `@media print { @page { size: ${size}; margin: 12mm; } }`;
+      } else {
+        styleEl.textContent = `@media print { @page { size: auto; margin: 0; } }`;
+      }
     }
 
     // ================= PRODUCTS =================
@@ -1164,10 +1243,28 @@
       row.appendChild(form);
     }
 
-    // ---------- batch stock-in (multiple items in one submission) ----------
+    // ---------- batch stock-in / stock-adjust ----------
     let stockinRowCount = 0;
+    let stockMode = "in"; // "in" | "adjust"
     const stockinSection = document.getElementById("stockin-section");
     const stockinRowsEl = document.getElementById("stockin-rows");
+
+    function setStockMode(mode) {
+      stockMode = mode;
+      const isAdjust = mode === "adjust";
+      document.getElementById("stock-mode-in-btn").classList.toggle("active", !isAdjust);
+      document.getElementById("stock-mode-adjust-btn").classList.toggle("active", isAdjust);
+      document.getElementById("stockin-section-title").textContent = isAdjust ? "Stock adjust" : "Stock in";
+      document.getElementById("stockin-mode-hint").textContent = isAdjust
+        ? "Adjust stock up or down. Use negative qty to remove. A reason is required and is stored on the transaction."
+        : "Record goods received. Qty must be positive. Unit cost updates weighted average cost.";
+      document.getElementById("stock-adjust-note-wrap").style.display = isAdjust ? "block" : "none";
+      // rebuild rows so labels/min match mode
+      stockinRowsEl.innerHTML = "";
+      addStockinRow();
+    }
+    document.getElementById("stock-mode-in-btn").addEventListener("click", () => setStockMode("in"));
+    document.getElementById("stock-mode-adjust-btn").addEventListener("click", () => setStockMode("adjust"));
 
     document.getElementById("stockin-toggle-btn").addEventListener("click", () => {
       const showing = stockinSection.style.display !== "none";
@@ -1187,10 +1284,13 @@
       const row = document.createElement("div");
       row.className = "stock-in-row";
       row.dataset.rowId = id;
+      const qtyLabel = stockMode === "adjust" ? "QTY (+/−)" : "QTY RECEIVED";
+      const qtyMin = stockMode === "adjust" ? "" : ' min="0"';
+      const costReq = stockMode === "adjust" ? "" : " required";
       row.innerHTML = `
         <div class="field field-full"><label>PRODUCT</label><select name="product_id">${productOptions()}</select></div>
-        <div class="field"><label>QTY RECEIVED</label><input type="number" name="qty" step="0.01" min="0" required></div>
-        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0" required></div>
+        <div class="field"><label>${qtyLabel}</label><input type="number" name="qty" step="0.01"${qtyMin} required></div>
+        <div class="field"><label>UNIT COST</label><input type="number" name="unit_cost" step="0.01" min="0"${costReq}></div>
         <button type="button" class="btn-sm btn-reject" data-action="remove-row">✕</button>
       `;
       const select = row.querySelector("select[name='product_id']");
@@ -1216,29 +1316,53 @@
       for (const row of rows) {
         const productId = parseInt(row.querySelector("select[name='product_id']").value, 10);
         const qty = parseFloat(row.querySelector("input[name='qty']").value);
-        const unitCost = parseFloat(row.querySelector("input[name='unit_cost']").value);
-        if (!productId || isNaN(qty) || qty <= 0 || isNaN(unitCost)) continue;
+        const unitCostRaw = row.querySelector("input[name='unit_cost']").value;
+        const unitCost = unitCostRaw === "" ? NaN : parseFloat(unitCostRaw);
+        if (!productId || isNaN(qty) || qty === 0) continue;
+        if (stockMode === "in" && (qty <= 0 || isNaN(unitCost))) continue;
         const product = products.find((p) => p.id === productId);
-        items.push({ product_id: productId, name: product ? product.name : "", qty, unit_cost: unitCost });
+        const entry = { product_id: productId, name: product ? product.name : "", qty };
+        if (!isNaN(unitCost)) entry.unit_cost = unitCost;
+        items.push(entry);
       }
-      if (!items.length) { showStatus(statusEl, "Add at least one valid item (product, qty, unit cost) first.", "err"); return; }
+      if (!items.length) {
+        showStatus(statusEl, stockMode === "adjust"
+          ? "Add at least one valid item with a non-zero qty (+ or −)."
+          : "Add at least one valid item (product, qty, unit cost) first.", "err");
+        return;
+      }
+
+      const note = (document.getElementById("stock-adjust-note").value || "").trim();
+      if (stockMode === "adjust" && !note) {
+        showStatus(statusEl, "A reason/note is required for stock adjustments.", "err");
+        return;
+      }
 
       const btn = document.getElementById("stockin-submit-btn");
       btn.disabled = true; btn.textContent = "RECORDING...";
+      const path = stockMode === "adjust" ? "/api/documents/stock-adjust" : "/api/documents/stock-in";
+      const label = stockMode === "adjust" ? "Stock adjust" : "Stock in";
+      const body = stockMode === "adjust" ? { items, note } : { items };
       try {
         const res = await apiWriteOrQueue({
-          path: "/api/documents/stock-in", method: "POST", body: { items }, label: "Stock in",
+          path, method: "POST", body, label,
           onOffline: async () => {
             for (const it of items) {
               const prod = products.find((x) => x.id === it.product_id);
               if (prod && prod.stock_qty != null) prod.stock_qty = (parseFloat(prod.stock_qty) || 0) + it.qty;
-              if (prod) prod.cost_price = it.unit_cost;
+              if (prod && it.unit_cost != null && it.qty > 0) prod.cost_price = it.unit_cost;
             }
             await cachePut("/api/products", products);
           },
         });
-        showStatus(statusEl, res && res.offline ? `Stock queued offline for ${items.length} item(s).` : `Stock updated for ${items.length} item(s).`, "ok");
+        const msg = res && res.offline
+          ? `${label} queued offline for ${items.length} item(s).`
+          : (res && res.docNumber != null
+              ? `${label} recorded (Txn #${res.docNumber}) for ${items.length} item(s).`
+              : `${label} recorded for ${items.length} item(s).`);
+        showStatus(statusEl, msg, "ok");
         stockinRowsEl.innerHTML = "";
+        document.getElementById("stock-adjust-note").value = "";
         addStockinRow();
         await loadProducts();
         renderProducts();
@@ -1468,24 +1592,28 @@
 
     // ================= SETTINGS =================
     function fillSettingsForm() {
+      document.getElementById("s-shop-name").value = shop.name || "";
       document.getElementById("s-legal-name").value = shop.legal_name || "";
       document.getElementById("s-address").value = shop.address || "";
       document.getElementById("s-contact").value = shop.contact_number || "";
       document.getElementById("s-footer").value = shop.footer_note || "";
-      document.getElementById("s-paper").value = String(shop.paper_width || 80);
+      const ps = shop.paper_size || (shop.paper_width === 58 ? "58mm" : shop.paper_width === 210 ? "A4" : shop.paper_width === 216 ? "Letter" : "80mm");
+      document.getElementById("s-paper").value = ps;
       document.getElementById("s-tax").value = ((shop.tax_rate || 0) * 100).toString();
+      loadNameRequestStatus();
     }
     document.getElementById("settings-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = document.getElementById("settings-save-btn");
       btn.disabled = true; btn.textContent = "SAVING...";
       try {
+        const paper_size = document.getElementById("s-paper").value;
         const body = {
           legal_name: document.getElementById("s-legal-name").value.trim(),
           address: document.getElementById("s-address").value.trim(),
           contact_number: document.getElementById("s-contact").value.trim(),
           footer_note: document.getElementById("s-footer").value.trim(),
-          paper_width: parseInt(document.getElementById("s-paper").value, 10),
+          paper_size,
           tax_rate: (parseFloat(document.getElementById("s-tax").value) || 0) / 100,
         };
         const res = await apiWriteOrQueue({
@@ -1504,6 +1632,85 @@
         btn.disabled = false; btn.textContent = "SAVE SETTINGS";
       }
     });
+
+    // ---------- shop name change request ----------
+    async function loadNameRequestStatus() {
+      const el = document.getElementById("name-request-status");
+      const form = document.getElementById("name-request-form");
+      try {
+        const row = await apiFetch("/api/shop/name-request");
+        if (!row) {
+          el.textContent = "No name-change request on file.";
+          form.style.display = "";
+          return;
+        }
+        if (row.status === "pending") {
+          el.textContent = "Pending request: \u201c" + row.requested_name + "\u201d (submitted " + fmtDate(row.created_at) + "). Waiting for admin approval.";
+          form.style.display = "none";
+        } else if (row.status === "approved") {
+          el.textContent = "Last request approved: \u201c" + row.requested_name + "\u201d. You can submit another if needed.";
+          form.style.display = "";
+        } else {
+          el.textContent = "Last request rejected (\u201c" + row.requested_name + "\u201d). You can submit a new one.";
+          form.style.display = "";
+        }
+      } catch (_) {
+        el.textContent = "";
+      }
+    }
+    document.getElementById("name-request-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("nr-submit-btn");
+      const requested_name = document.getElementById("nr-name").value.trim();
+      const note = document.getElementById("nr-note").value.trim();
+      if (!requested_name || requested_name.length < 2) {
+        showStatus(statusEl, "Enter a new shop name (at least 2 characters).", "err");
+        return;
+      }
+      btn.disabled = true; btn.textContent = "SUBMITTING\u2026";
+      try {
+        await apiFetch("/api/shop/name-request", { method: "POST", body: JSON.stringify({ requested_name, note }) });
+        document.getElementById("nr-name").value = "";
+        document.getElementById("nr-note").value = "";
+        showStatus(statusEl, "Name-change request submitted. Admin will review it.", "ok");
+        await loadNameRequestStatus();
+      } catch (err) {
+        showStatus(statusEl, err.message, "err");
+      } finally {
+        btn.disabled = false; btn.textContent = "SUBMIT REQUEST";
+      }
+    });
+
+    // ---------- audit log ----------
+    document.getElementById("audit-load-btn").addEventListener("click", loadAuditLog);
+    async function loadAuditLog() {
+      const from = document.getElementById("audit-from").value || "1970-01-01";
+      const to = document.getElementById("audit-to").value || "9999-12-31";
+      const type = document.getElementById("audit-type").value;
+      const tbody = document.getElementById("audit-tbody");
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-line">Loading\u2026</td></tr>';
+      try {
+        let path = "/api/shop/audit-log?from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to) + "&limit=200";
+        if (type) path += "&type=" + encodeURIComponent(type);
+        const rows = await apiFetch(path);
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="loading-line">No transactions in this range.</td></tr>';
+          return;
+        }
+        const typeLabel = { SALE: "Sale", REVERSAL: "Void", STOCK_IN: "Stock in", STOCK_ADJUST: "Stock adjust", STOCK_IN_REVERSAL: "Stock in void" };
+        tbody.innerHTML = rows.map(function (r) {
+          return "<tr>" +
+            "<td><strong>#" + r.doc_number + "</strong></td>" +
+            "<td>" + (typeLabel[r.doc_type] || r.doc_type) + "</td>" +
+            "<td>" + fmtDate(r.created_at) + "</td>" +
+            "<td>" + (r.doc_type === "SALE" || r.doc_type === "REVERSAL" ? fmtMoney(r.total) : "\u2014") + "</td>" +
+            "<td>" + escapeHtml(r.note || "\u2014") + "</td>" +
+            "</tr>";
+        }).join("");
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-line">' + escapeHtml(err.message) + "</td></tr>";
+      }
+    }
 
     init();
   </script>

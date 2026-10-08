@@ -9,10 +9,11 @@ CREATE TABLE shops (
     contact_number        TEXT,
     footer_note           TEXT,                        -- e.g. "Thank you, come again"
     tracks_inventory      INTEGER NOT NULL DEFAULT 1,   -- 0 = non-inventory (billing only) mode
-    paper_width           INTEGER NOT NULL DEFAULT 80,  -- 58 or 80 (mm)
+    paper_width           INTEGER NOT NULL DEFAULT 80,  -- legacy thermal mm (58/80); prefer paper_size
+    paper_size            TEXT NOT NULL DEFAULT '80mm', -- '58mm' | '80mm' | 'A4' | 'Letter' — receipt layout auto-fits
     tax_rate              REAL NOT NULL DEFAULT 0,      -- e.g. 0.15 for 15%
     low_stock_threshold   INTEGER NOT NULL DEFAULT 5,   -- legacy/unused: superseded by products.low_stock_threshold (per-item minimum)
-    next_doc_number       INTEGER NOT NULL DEFAULT 1,   -- atomic per-shop counter
+    next_doc_number       INTEGER NOT NULL DEFAULT 1,   -- atomic per-shop counter (transaction id for every doc)
     next_item_number       INTEGER NOT NULL DEFAULT 1,   -- atomic per-shop counter for products.item_code
     status                TEXT NOT NULL DEFAULT 'active', -- 'pending' | 'active' | 'rejected' — self-serve signups start pending
     active                INTEGER NOT NULL DEFAULT 1,
@@ -68,13 +69,14 @@ CREATE TABLE products (
     FOREIGN KEY (shop_id) REFERENCES shops(id)
 );
 
--- Unified document journal: sales, reversals, stock-in, stock-in reversals.
+-- Unified document journal: sales, reversals, stock-in, stock adjust, stock-in reversals.
 -- Nothing here is ever UPDATEd after posting except print_count.
+-- Every document gets a sequential doc_number (transaction id) shared across types.
 CREATE TABLE documents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     shop_id           INTEGER NOT NULL,
-    doc_type          TEXT NOT NULL,             -- SALE | REVERSAL | STOCK_IN | STOCK_IN_REVERSAL
-    doc_number        INTEGER NOT NULL,          -- sequential per shop, shared across all doc_types
+    doc_type          TEXT NOT NULL,             -- SALE | REVERSAL | STOCK_IN | STOCK_ADJUST | STOCK_IN_REVERSAL
+    doc_number        INTEGER NOT NULL,          -- sequential per shop = transaction id for audit
     reference_doc_id  INTEGER,                   -- NULL for originals; points to original for reversals/rebills
     subtotal          REAL NOT NULL DEFAULT 0,
     discount_amount   REAL NOT NULL DEFAULT 0,
@@ -134,3 +136,20 @@ CREATE TABLE otp_codes (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_otp_email_purpose ON otp_codes(email, purpose, created_at);
+
+-- Shop requests a display/internal name change; super_admin approves or rejects.
+CREATE TABLE shop_name_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id         INTEGER NOT NULL,
+    current_name    TEXT NOT NULL,
+    requested_name  TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+    note            TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at     TEXT,
+    resolved_by     INTEGER,
+    FOREIGN KEY (shop_id) REFERENCES shops(id),
+    FOREIGN KEY (resolved_by) REFERENCES users(id)
+);
+CREATE INDEX idx_shop_name_requests_status ON shop_name_requests(status, created_at);
+CREATE INDEX idx_shop_name_requests_shop ON shop_name_requests(shop_id, created_at);

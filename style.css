@@ -781,6 +781,11 @@ body:has(.app-shell) { padding: 0; }
 .print-receipt .pr-right { text-align: right; }
 .print-receipt .pr-disc { font-size: 10px; font-style: italic; color: #333; padding-bottom: 4px; }
 
+.print-receipt.paper-a4 { max-width: 180mm; font-size: 13px; }
+.print-receipt.paper-letter { max-width: 190mm; font-size: 13px; }
+.print-receipt.paper-a4 h2, .print-receipt.paper-letter h2 { font-size: 18px; }
+.print-receipt.paper-a4 table, .print-receipt.paper-letter table { font-size: 12px; }
+
 @media print {
   @page { margin: 0; size: auto; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
@@ -789,6 +794,10 @@ body:has(.app-shell) { padding: 0; }
   #print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; margin: 0; }
   .print-receipt { width: 80mm; max-width: 80mm; margin: 0; padding: 3mm 4mm; box-shadow: none; }
   .print-receipt.narrow { width: 58mm; max-width: 58mm; padding: 2mm 3mm; }
+  .print-receipt.paper-a4 { width: 180mm; max-width: 180mm; padding: 8mm 10mm; font-size: 13px; }
+  .print-receipt.paper-letter { width: 190mm; max-width: 190mm; padding: 8mm 10mm; font-size: 13px; }
+  .print-receipt.paper-a4 h2, .print-receipt.paper-letter h2 { font-size: 18px; }
+  .print-receipt.paper-a4 table, .print-receipt.paper-letter table { font-size: 12px; }
 }
 
 .field-full { flex: 1 1 100%; }

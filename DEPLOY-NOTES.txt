@@ -1,0 +1,41 @@
+POS update — upload package
+===========================
+
+Files in this zip (repo root layout — paste/overwrite on GitHub):
+
+  worker.js
+  dashboard.html
+  admin.html
+  style.css
+  schema.sql
+  schema-d1-console.sql
+  migration-stock-adjust-name-request-paper-audit.sql
+
+What changed
+------------
+1. Stock ADJUST (signed qty + required note) in addition to Stock IN
+2. Shop name change request (shop) → Name requests tab (admin approve/reject)
+3. Audit log in Settings (Txn # / doc_number for every transaction)
+4. Paper sizes: 58mm, 80mm, A4, Letter — receipt layout auto-fits
+
+Do this yourself
+----------------
+A) D1 schema (existing database)
+   Cloudflare Dashboard → D1 → your pos-db → Console
+   Paste and run the full contents of:
+     migration-stock-adjust-name-request-paper-audit.sql
+
+B) Worker
+   Workers & Pages → your worker → Edit code
+   Replace entire contents with worker.js → Deploy
+
+C) Frontend (GitHub / Pages)
+   Overwrite these files in the repo root:
+     dashboard.html
+     admin.html
+     style.css
+   (schema.sql / schema-d1-console.sql optional docs for new installs)
+
+D) Optional: full schema files are updated for fresh installs only.
+   Existing D1 must use the migration file (A), not re-run full schema.
+

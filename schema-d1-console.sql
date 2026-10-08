@@ -7,6 +7,7 @@ CREATE TABLE shops (
     footer_note           TEXT,
     tracks_inventory      INTEGER NOT NULL DEFAULT 1,
     paper_width           INTEGER NOT NULL DEFAULT 80,
+    paper_size            TEXT NOT NULL DEFAULT '80mm',
     tax_rate              REAL NOT NULL DEFAULT 0,
     low_stock_threshold   INTEGER NOT NULL DEFAULT 5,
     next_doc_number       INTEGER NOT NULL DEFAULT 1,
@@ -125,3 +126,19 @@ CREATE TABLE otp_codes (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_otp_email_purpose ON otp_codes(email, purpose, created_at);
+
+CREATE TABLE shop_name_requests (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id         INTEGER NOT NULL,
+    current_name    TEXT NOT NULL,
+    requested_name  TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    note            TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at     TEXT,
+    resolved_by     INTEGER,
+    FOREIGN KEY (shop_id) REFERENCES shops(id),
+    FOREIGN KEY (resolved_by) REFERENCES users(id)
+);
+CREATE INDEX idx_shop_name_requests_status ON shop_name_requests(status, created_at);
+CREATE INDEX idx_shop_name_requests_shop ON shop_name_requests(shop_id, created_at);
