@@ -933,7 +933,7 @@
       offlineSeq += 1;
       localStorage.setItem("pos_offline_seq", String(offlineSeq));
       const receipt = {
-        shop, status: "ORIGINAL", is_reprint: false, print_count: 1,
+        shop, status: "ORIGINAL", is_reprint: false, print_count: 0, copy_label: "ORIGINAL", print_kind: "original",
         doc: { doc_number: "OFF-" + offlineSeq, doc_type: "SALE", created_at: createdAt.replace("T", " ").slice(0, 19),
                subtotal, discount_amount: discount, tax_amount: tax, total, received_amount: receivedAmount },
         items: items.map((i) => ({ ...i, line_total: i.qty * i.unit_price - (i.discount_amount || 0), item_code: (products.find((p) => p.id === i.product_id) || {}).item_code })),
@@ -1028,8 +1028,32 @@
     }
     document.getElementById("receipt-preview-close").addEventListener("click", closeReceiptPreview);
 
-    // Preview bar PRINT — only here do we open the system print dialog
-    document.getElementById("receipt-preview-print").addEventListener("click", () => {
+    // Pending paper-jam original reprint (set from History → Reprint original)
+    let pendingOriginalReprint = null; // { note }
+
+    // Preview bar PRINT — record print on server, then system dialog
+    document.getElementById("receipt-preview-print").addEventListener("click", async () => {
+      const docId = lastReceiptData && lastReceiptData.doc && lastReceiptData.doc.id;
+      if (docId && !String(docId).startsWith("OFF") && !String(docId).startsWith("local")) {
+        try {
+          const body = pendingOriginalReprint
+            ? { kind: "original_reprint", note: pendingOriginalReprint.note }
+            : {};
+          const recorded = await apiFetch(`/api/documents/${docId}/print`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          pendingOriginalReprint = null;
+          lastReceiptData = { ...lastReceiptData, ...recorded };
+          renderPrintArea(lastReceiptData);
+          // refresh preview body with ORIGINAL/COPY banner
+          document.getElementById("receipt-preview-body").innerHTML =
+            document.getElementById("print-area").innerHTML;
+        } catch (e) {
+          showStatus(statusEl, e.message || "Could not record print.", "err");
+          return;
+        }
+      }
       try { window.print(); } catch (_) {}
     });
 
@@ -1042,6 +1066,7 @@
       if (data.shop && data.shop.contact_number) lines.push(String(data.shop.contact_number));
       lines.push("");
       lines.push("Txn #" + data.doc.doc_number + "  " + fmtDate(data.doc.created_at));
+      lines.push(data.copy_label || (data.is_reprint ? "COPY" : "ORIGINAL"));
       if (data.status && data.status !== "ORIGINAL") lines.push("Status: " + data.status);
       lines.push("--------------------");
       (data.items || []).forEach((it) => {
@@ -1126,6 +1151,55 @@
       }
     });
 
+    async function reprintAsOriginal(docId, docNumber) {
+      const note = prompt(
+        "Reprint Txn #" + docNumber + " as ORIGINAL (paper jam / failed print).\n\nEnter reason (required):",
+        "Paper jam"
+      );
+      if (note === null) return;
+      const reason = String(note).trim();
+      if (!reason) {
+        showStatus(statusEl, "A reason is required to reprint as original.", "err");
+        return;
+      }
+      pendingOriginalReprint = { note: reason };
+      try {
+        const data = await apiFetch(`/api/documents/${docId}/print`);
+        lastReceiptData = {
+          ...data,
+          copy_label: "ORIGINAL",
+          print_kind: "original_reprint",
+          print_note: reason,
+          is_reprint: false,
+        };
+        renderPrintArea(lastReceiptData);
+        openReceiptPreview();
+        showStatus(statusEl, "Preview is marked ORIGINAL reprint. Tap PRINT on the bar to confirm.", "ok");
+      } catch (e) {
+        pendingOriginalReprint = null;
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+
+    async function showPrintHistory(docId, docNumber) {
+      try {
+        const rows = await apiFetch(`/api/documents/${docId}/print-history`);
+        if (!rows.length) {
+          alert("Txn #" + docNumber + " — no print history yet.");
+          return;
+        }
+        const kindLabel = { original: "ORIGINAL", copy: "COPY", original_reprint: "ORIGINAL (reprint)" };
+        const lines = rows.map((r) =>
+          "#" + r.print_number + "  " + (kindLabel[r.print_kind] || r.print_kind) +
+          "  " + fmtDateShort(r.created_at) +
+          (r.note ? "  — " + r.note : "")
+        );
+        alert("Print history — Txn #" + docNumber + "\n\n" + lines.join("\n"));
+      } catch (e) {
+        showStatus(statusEl, e.message, "err");
+      }
+    }
+
     // Opens layout only — does NOT call window.print()
     async function printReceipt(docId) {
       try {
@@ -1160,8 +1234,10 @@
         <div class="print-receipt${pageClass}">
           <h2>${escapeHtml(data.shop.legal_name || "")}</h2>
           <div class="pr-meta">${escapeHtml(data.shop.address || "")}${data.shop.contact_number ? " · " + escapeHtml(data.shop.contact_number) : ""}</div>
-          ${data.status !== "ORIGINAL" ? `<div class="pr-status">${data.status}</div>` : ""}
+          ${data.status && data.status !== "ORIGINAL" ? `<div class="pr-status">${data.status}</div>` : ""}
+          <div class="pr-copy-banner">${escapeHtml(data.copy_label || (data.is_reprint ? "COPY" : "ORIGINAL"))}</div>
           <div class="pr-meta">Txn #${data.doc.doc_number} · ${fmtDate(data.doc.created_at)}</div>
+          ${data.print_kind === "original_reprint" ? `<div class="pr-meta">Original reprint${data.print_note ? ": " + escapeHtml(data.print_note) : ""}</div>` : ""}
           <hr>
           <table>${itemsHtml}</table>
           <hr>
@@ -1175,7 +1251,7 @@
           </table>
           <hr>
           ${data.shop.footer_note ? `<div class="pr-meta">${escapeHtml(data.shop.footer_note)}</div>` : ""}
-          ${data.is_reprint ? `<div class="pr-meta">Reprint #${data.print_count}</div>` : ""}
+          ${data.print_count ? `<div class="pr-meta">Print #${data.print_count}</div>` : ""}
         </div>
       `;
       // Hint browser page size for A4 / Letter
@@ -1855,12 +1931,16 @@
           <td class="td-actions">
             <div class="row-actions">
               <button type="button" class="btn-xs btn-ghost" data-action="print">Print</button>
+              <button type="button" class="btn-xs btn-ghost" data-action="reprint-orig" title="Paper jam — reprint marked ORIGINAL">Orig.</button>
+              <button type="button" class="btn-xs btn-ghost" data-action="print-hist" title="Print history">Hist</button>
               ${canEditVoid ? '<button type="button" class="btn-xs btn-ghost" data-action="edit">Edit</button>' : ""}
               ${canEditVoid ? '<button type="button" class="btn-xs btn-reject" data-action="void">Void</button>' : ""}
             </div>
           </td>
         `;
         tr.querySelector('[data-action="print"]').addEventListener("click", () => printReceipt(d.id));
+        tr.querySelector('[data-action="reprint-orig"]').addEventListener("click", () => reprintAsOriginal(d.id, d.doc_number));
+        tr.querySelector('[data-action="print-hist"]').addEventListener("click", () => showPrintHistory(d.id, d.doc_number));
         if (canEditVoid) {
           tr.querySelector('[data-action="edit"]').addEventListener("click", () => startEdit(d.id));
           tr.querySelector('[data-action="void"]').addEventListener("click", () => voidDoc(d));

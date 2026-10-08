@@ -1475,3 +1475,17 @@ body.receipt-preview-open { overflow: hidden; }
   .dtype { font-size: 9px; padding: 2px 5px; }
   .table-tx { min-width: 720px; }
 }
+
+
+/* ORIGINAL / COPY stamp on receipt */
+.pr-copy-banner {
+  text-align: center;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  margin: 6px 0 4px;
+  padding: 4px 0;
+  border-top: 1px dashed #000;
+  border-bottom: 1px dashed #000;
+}
+.print-receipt.narrow .pr-copy-banner { font-size: 11px; letter-spacing: 0.12em; }

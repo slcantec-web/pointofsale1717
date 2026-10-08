@@ -1166,10 +1166,10 @@ async function handleEditSale(request, env, auth, docId) {
   return json(result);
 }
 
-async function handlePrint(request, env, auth, docId) {
+async function loadReceiptPayload(env, auth, docId) {
   const shop = await env.DB.prepare(`SELECT * FROM shops WHERE id = ?`).bind(auth.shopId).first();
   const doc = await env.DB.prepare(`SELECT * FROM documents WHERE id = ? AND shop_id = ?`).bind(docId, auth.shopId).first();
-  if (!doc) return err("document not found", 404);
+  if (!doc) return null;
 
   const { results: items } = await env.DB.prepare(
     `SELECT di.*, p.item_code AS item_code
@@ -1194,11 +1194,9 @@ async function handlePrint(request, env, auth, docId) {
   if (reversal && rebill) status = "EDITED";
   else if (reversal) status = "CANCELLED";
 
-  await env.DB.prepare(`UPDATE documents SET print_count = print_count + 1 WHERE id = ?`).bind(docId).run();
-
   const paper_size = normalizePaperSize(shop.paper_size || shop.paper_width, "80mm");
 
-  return json({
+  return {
     shop: {
       legal_name: shop.legal_name,
       address: shop.address,
@@ -1210,9 +1208,100 @@ async function handlePrint(request, env, auth, docId) {
     doc,
     items,
     status,
-    print_count: doc.print_count + 1,
-    is_reprint: doc.print_count + 1 > 1,
+    print_count: doc.print_count || 0,
+  };
+}
+
+// GET: preview only — does NOT increment print_count or write history
+async function handlePrintPreview(request, env, auth, docId) {
+  const payload = await loadReceiptPayload(env, auth, docId);
+  if (!payload) return err("document not found", 404);
+
+  const nextKind = (payload.print_count || 0) === 0 ? "original" : "copy";
+  return json({
+    ...payload,
+    // What the *next* confirmed print would be (preview label)
+    print_kind: nextKind,
+    is_reprint: nextKind !== "original",
+    copy_label: nextKind === "original" ? "ORIGINAL" : "COPY",
   });
+}
+
+// POST: confirm a physical print — records history + increments print_count
+// body: { kind?: "copy" | "original_reprint", note?: string }
+// - default: first print → original, later → copy
+// - original_reprint: paper-jam recovery; slip shows ORIGINAL again; requires note
+async function handlePrintConfirm(request, env, auth, docId) {
+  const payload = await loadReceiptPayload(env, auth, docId);
+  if (!payload) return err("document not found", 404);
+
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {
+    body = {};
+  }
+
+  const currentCount = payload.print_count || 0;
+  let printKind = currentCount === 0 ? "original" : "copy";
+  let note = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
+
+  if (body.kind === "original_reprint") {
+    if (!note) return err("a reason is required to reprint as original (e.g. paper jam)");
+    printKind = "original_reprint";
+  }
+
+  const newCount = currentCount + 1;
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE documents SET print_count = ? WHERE id = ? AND shop_id = ?`).bind(
+        newCount,
+        docId,
+        auth.shopId
+      ),
+      env.DB.prepare(
+        `INSERT INTO print_events (shop_id, document_id, print_kind, print_number, note, created_by)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(auth.shopId, docId, printKind, newCount, note, auth.userId || null),
+    ]);
+  } catch (e) {
+    // Fallback if print_events table not migrated yet — still bump count
+    await env.DB.prepare(`UPDATE documents SET print_count = ? WHERE id = ? AND shop_id = ?`)
+      .bind(newCount, docId, auth.shopId)
+      .run();
+  }
+
+  const copyLabel =
+    printKind === "original" || printKind === "original_reprint" ? "ORIGINAL" : "COPY";
+
+  return json({
+    ...payload,
+    print_count: newCount,
+    print_kind: printKind,
+    is_reprint: printKind === "copy",
+    copy_label: copyLabel,
+    print_recorded: true,
+  });
+}
+
+async function handlePrintHistory(request, env, auth, docId) {
+  const doc = await env.DB.prepare(`SELECT id FROM documents WHERE id = ? AND shop_id = ?`)
+    .bind(docId, auth.shopId)
+    .first();
+  if (!doc) return err("document not found", 404);
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT id, print_kind, print_number, note, created_at, created_by
+       FROM print_events WHERE document_id = ? AND shop_id = ?
+       ORDER BY print_number ASC`
+    )
+      .bind(docId, auth.shopId)
+      .all();
+    return json(results || []);
+  } catch (_) {
+    return json([]);
+  }
 }
 
 // ---------- shop name change request (shop → super_admin) ----------
@@ -1599,7 +1688,10 @@ export default {
       if (editMatch && method === "POST") return await handleEditSale(request, env, auth, editMatch[1]);
 
       const printMatch = path.match(/^\/api\/documents\/(\d+)\/print$/);
-      if (printMatch && method === "GET") return await handlePrint(request, env, auth, printMatch[1]);
+      if (printMatch && method === "GET") return await handlePrintPreview(request, env, auth, printMatch[1]);
+      if (printMatch && method === "POST") return await handlePrintConfirm(request, env, auth, printMatch[1]);
+      const printHistMatch = path.match(/^\/api\/documents\/(\d+)\/print-history$/);
+      if (printHistMatch && method === "GET") return await handlePrintHistory(request, env, auth, printHistMatch[1]);
 
       if (path === "/api/doc-types" && method === "GET") return await handleListDocTypes(request, env, auth);
 

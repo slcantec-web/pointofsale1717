@@ -1,15 +1,16 @@
-Receipt preview: layout first, then Print / Share
-=================================================
-Overwrite:
-  dashboard.html
-  style.css
+Original vs Copy prints + reprint history
+=========================================
 
-Behaviour
----------
-1) Click PRINT on a sale → opens receipt LAYOUT only (no print dialog)
-2) On the preview bar:
-   - PRINT → system print dialog
-   - SHARE → WhatsApp / Email / More… (system share) / Copy text
-   - CLOSE → dismiss preview
+1) D1: run migration-print-events.sql
+2) Redeploy worker.js
+3) Upload dashboard.html + style.css
 
-Works on web and mobile. No worker/D1 changes.
+Rules
+-----
+- First confirmed PRINT → slip says ORIGINAL
+- Later confirmed PRINT → slip says COPY
+- Preview alone does NOT count as a print
+- History → "Orig." = paper-jam reprint as ORIGINAL (reason required)
+- History → "Hist" = print history for that txn
+
+Print is recorded only when you tap PRINT on the preview bar.
