@@ -1,26 +1,14 @@
-1) Real Online/Offline detection
-2) Auto-approve pending shops after 24h (admin toggle)
-=====================================================
+Fix: stuck Offline after connection returns
+==========================================
+Overwrite: offline.js
 
-D1 Console — run migration-app-settings.sql
+Changes
+-------
+- While Offline, probe every 4 seconds (was 12s)
+- Any response from the server = Online (not only HTTP 200)
+- Fallback no-cors probe if CORS health fails
+- Tap the Online/Offline chip to force recheck
+- Flush no longer blocked by a sticky navigator.onLine=false
 
-Redeploy worker.js
-
-Upload:
-  offline.js
-  dashboard.html
-  style.css
-  admin.html
-
-Online/Offline
---------------
-- Probes GET /api/health every 12s (not only navigator.onLine)
-- Failed API calls mark Offline; success marks Online
-- Chip + red banner update correctly on mobile when data is off
-
-Auto-approve
-------------
-- Admin → Pending tab → "Auto-approve after 24 hours" toggle
-- Default OFF
-- When ON: pending shops older than 24h become active (on list load + on login)
-- Shop receives approval email
+Hard-refresh or rebuild APK after upload.
+Ensure worker.js with /api/health is deployed.
