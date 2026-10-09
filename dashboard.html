@@ -736,30 +736,47 @@
     function renderPickList(filter) {
       const listEl = document.getElementById("pick-list");
       const q = (filter || "").trim().toLowerCase();
-      const shown = products.filter((p) => {
-        if (!p.active) return false;
-        if (selectedGroup && (p.item_group || "") !== selectedGroup) return false;
-        if (!q) return true;
-        return p.name.toLowerCase().includes(q) || (p.item_code || "").includes(q) || (p.item_group || "").toLowerCase().includes(q);
-      });
-      listEl.innerHTML = "";
+      const inv = !!(shop && shop.tracks_inventory);
+      const shown = [];
+      for (let i = 0; i < products.length; i++) {
+        const p = products[i];
+        if (!p.active) continue;
+        if (selectedGroup && (p.item_group || "") !== selectedGroup) continue;
+        if (q) {
+          const name = (p.name || "").toLowerCase();
+          const code = String(p.item_code || "");
+          const grp = (p.item_group || "").toLowerCase();
+          if (!name.includes(q) && !code.includes(q) && !grp.includes(q)) continue;
+        }
+        shown.push(p);
+      }
       if (!shown.length) {
         listEl.innerHTML = '<p class="empty-line">No products found.</p>';
         return;
       }
-      shown.forEach((p) => {
-        const outOfStock = shop.tracks_inventory && p.stock_qty !== null && p.stock_qty <= 0;
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "pick-item" + (outOfStock ? " out-of-stock" : "");
-        const bits = [`#${escapeHtml(p.item_code)}`];
-        if (shop.tracks_inventory && p.stock_qty !== null) bits.push(`${p.stock_qty} in stock`);
-        if (p.discount_pct) bits.push(`${p.discount_pct}% off`);
+      // Build HTML in one pass, then bind clicks once — much faster than per-item createElement for large catalogs
+      const html = [];
+      for (let i = 0; i < shown.length; i++) {
+        const p = shown[i];
+        const outOfStock = inv && p.stock_qty !== null && p.stock_qty <= 0;
+        const bits = ["#" + escapeHtml(p.item_code)];
+        if (inv && p.stock_qty !== null) bits.push(p.stock_qty + " in stock");
+        if (p.discount_pct) bits.push(p.discount_pct + "% off");
         if (p.item_group) bits.push(escapeHtml(p.item_group));
-        btn.innerHTML = `<span class="pick-item-name">${escapeHtml(p.name)}</span><span class="pick-item-price">${fmtMoney(p.unit_price)}</span><span class="pick-item-meta">${bits.join(" · ")}</span>`;
-        btn.addEventListener("click", () => { if (!outOfStock) addToCart(p); });
-        listEl.appendChild(btn);
-      });
+        html.push(
+          '<button type="button" class="pick-item' + (outOfStock ? " out-of-stock" : "") + '" data-idx="' + i + '">' +
+          '<span class="pick-item-name">' + escapeHtml(p.name) + '</span>' +
+          '<span class="pick-item-price">' + fmtMoney(p.unit_price) + '</span>' +
+          '<span class="pick-item-meta">' + bits.join(" · ") + '</span></button>'
+        );
+      }
+      listEl.innerHTML = html.join("");
+      listEl.onclick = (e) => {
+        const btn = e.target.closest("button.pick-item");
+        if (!btn || btn.classList.contains("out-of-stock")) return;
+        const p = shown[parseInt(btn.dataset.idx, 10)];
+        if (p) addToCart(p);
+      };
     }
 
     function autoDiscount(unitPrice, qty, discountPct) {
@@ -1012,12 +1029,22 @@
             await apiFetch(`/api/documents/${result.documentId}/void`, { method: "POST" });
             showStatus(statusEl, `Sale #${result.docNumber} voided.`, "ok");
             lastActions.style.display = "none";
-            loadProducts();
+            await reloadProductsUI();
           } catch (err) {
             showStatus(statusEl, err.message, "err");
           }
         };
-        loadProducts();
+        // Optimistic stock so Bill/Products lists update immediately; then refresh from server
+        if (shop && shop.tracks_inventory) {
+          items.forEach((it) => {
+            const p = products.find((x) => x.id === it.product_id);
+            if (p && p.stock_qty !== null) p.stock_qty -= it.qty;
+          });
+          renderPickList(document.getElementById("product-search").value);
+          renderProducts();
+          updateLowStockPill();
+        }
+        reloadProductsUI();
       } catch (e) {
         if (!editingDocId && isNetworkError(e)) {
           await saveSaleOffline({ clientRef, createdAt, items, total });
@@ -1053,14 +1080,14 @@
       };
       showStatus(statusEl, `Saved offline as OFF-${offlineSeq} — it will post automatically when you're back online.`, "ok");
       cart = []; editingDocId = null; receivedManual = false;
-      renderCart(); renderPickList(document.getElementById("product-search").value); updateLowStockPill();
+      renderCart(); renderPickList(document.getElementById("product-search").value); renderProducts(); updateLowStockPill();
       const lastActions = document.getElementById("last-sale-actions");
       lastActions.style.display = "block";
       document.getElementById("void-last-btn").style.display = "none"; // can't void what the server hasn't seen yet
       document.getElementById("print-last-btn").onclick = () => { lastReceiptData = receipt; renderPrintArea(receipt); openReceiptPreview(); };
     }
-    window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); loadProducts().then(() => renderPickList()); };
-    window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); loadProducts().then(() => { renderPickList(); renderProducts(); }); loadItemGroups(); };
+    window.onSalesSynced = (n) => { showStatus(statusEl, `${n} offline sale(s) posted.`, "ok"); reloadProductsUI(); };
+    window.onWritesSynced = (n) => { showStatus(statusEl, `${n} offline change(s) posted.`, "ok"); reloadProductsUI(); loadItemGroups(); };
     window.onOfflineSynced = (n) => { /* toast already shown by offline.js */ };
 
     // Called by offline.js when connection is confirmed Online after being Offline
@@ -1423,6 +1450,14 @@
       products = await cachedGet("/api/products");
       updateLowStockPill();
       refreshTxItemOptions();
+    }
+
+    /** Reload products from API/cache and redraw both the Bill pick list and the Products tab list. */
+    async function reloadProductsUI() {
+      await loadProducts();
+      const q = document.getElementById("product-search");
+      renderPickList(q ? q.value : "");
+      renderProducts();
     }
 
     // ---------- item groups / categories (managed via /api/item-groups) ----------
@@ -2172,7 +2207,7 @@
         await apiFetch(`/api/documents/${d.id}/void`, { method: "POST" });
         showStatus(statusEl, `Sale #${d.doc_number} voided.`, "ok");
         loadHistory(true);
-        loadProducts();
+        await reloadProductsUI();
       } catch (e) {
         showStatus(statusEl, e.message, "err");
       }
@@ -2195,11 +2230,19 @@
     async function loadReports() {
       const from = document.getElementById("r-from").value;
       const to = document.getElementById("r-to").value;
+      const path = `/api/reports?from=${from}&to=${to}`;
+      // Show last saved copy immediately so the tab isn't blank while the network is slow
       try {
-        const data = await cachedGet(`/api/reports?from=${from}&to=${to}`);
+        const stale = await cacheGet(path);
+        if (stale) renderReports(stale);
+      } catch (_) {}
+      try {
+        const data = await cachedGet(path);
         renderReports(data);
       } catch (e) {
-        showStatus(statusEl, e.message, "err");
+        // Only error if we had nothing cached to show
+        const hasCards = document.getElementById("summary-cards") && document.getElementById("summary-cards").children.length;
+        if (!hasCards) showStatus(statusEl, e.message, "err");
       }
     }
 
@@ -2210,17 +2253,25 @@
       const group = document.getElementById("tx-group").value;
       const docType = document.getElementById("tx-type").value;
       const body = document.getElementById("tx-body");
-      // keep the previous rows visible while refreshing; only show "Loading…" on an empty table
-      if (!body.querySelector("tr td:not(.loading-line)")) body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
+      let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
+      if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
+      if (group) path += `&group=${encodeURIComponent(group)}`;
+      if (docType) path += `&type=${encodeURIComponent(docType)}`;
+      // Stale-while-revalidate: paint cached rows first, only show Loading… if empty
       try {
-        let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
-        if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
-        if (group) path += `&group=${encodeURIComponent(group)}`;
-        if (docType) path += `&type=${encodeURIComponent(docType)}`;
+        const stale = await cacheGet(path);
+        if (stale && stale.length) renderTransactions(stale);
+        else if (!body.querySelector("tr td:not(.loading-line)")) body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
+      } catch (_) {
+        if (!body.querySelector("tr td:not(.loading-line)")) body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
+      }
+      try {
         const rows = await cachedGet(path);
         renderTransactions(rows);
       } catch (e) {
-        body.innerHTML = `<tr><td colspan="12" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        if (!body.querySelector("tr td:not(.loading-line)")) {
+          body.innerHTML = `<tr><td colspan="12" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        }
       }
     }
     function renderTransactions(rows) {

@@ -1473,7 +1473,7 @@ async function handleAuditLog(request, env, auth, url) {
                      d.received_amount, d.balance_due, d.note, d.created_at, d.created_by, d.reference_doc_id,
                      d.print_count
               FROM documents d
-              WHERE d.shop_id = ? AND date(d.created_at) >= date(?) AND date(d.created_at) <= date(?)`;
+              WHERE d.shop_id = ? AND d.created_at >= ? AND d.created_at < date(?, '+1 day')`;
   const binds = [auth.shopId, from, to];
   if (docType) {
     sql += ` AND d.doc_type = ?`;
@@ -1500,7 +1500,8 @@ async function handleListDocuments(request, env, auth, url) {
   const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
   const { results: docs } = await env.DB.prepare(
-    `SELECT * FROM documents WHERE shop_id = ? AND doc_type IN ('SALE','REVERSAL') AND date(created_at) BETWEEN ? AND ?
+    `SELECT * FROM documents WHERE shop_id = ? AND doc_type IN ('SALE','REVERSAL')
+       AND created_at >= ? AND created_at < date(?, '+1 day')
      ORDER BY id DESC LIMIT ? OFFSET ?`
   )
     .bind(auth.shopId, from, to, limit, offset)
@@ -1551,36 +1552,39 @@ async function handleGetDocument(request, env, auth, docId) {
 async function handleReports(request, env, auth, url) {
   const from = url.searchParams.get("from") || "1970-01-01";
   const to = url.searchParams.get("to") || "2999-12-31";
+  // Use created_at range (not date()) so idx_documents_shop (shop_id, created_at) can be used.
+  // Inclusive end-of-day: created_at < date(to, '+1 day')
+  const fromTs = from;
+  const toExcl = to; // bound as date(?, '+1 day') in SQL
 
-  const sales = await env.DB.prepare(
-    `SELECT COALESCE(SUM(total),0) as revenue, COALESCE(SUM(discount_amount),0) as discounts, COUNT(*) as doc_count
-     FROM documents WHERE shop_id = ? AND doc_type IN ('SALE','REVERSAL') AND date(created_at) BETWEEN ? AND ?`
-  )
-    .bind(auth.shopId, from, to)
-    .first();
+  // Run independent queries in parallel for lower latency on D1
+  const [sales, gp, topRes, stockRes] = await Promise.all([
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(total),0) as revenue, COALESCE(SUM(discount_amount),0) as discounts, COUNT(*) as doc_count
+       FROM documents WHERE shop_id = ? AND doc_type IN ('SALE','REVERSAL')
+         AND created_at >= ? AND created_at < date(?, '+1 day')`
+    ).bind(auth.shopId, fromTs, toExcl).first(),
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(di.gp_amount),0) as gross_profit
+       FROM document_items di JOIN documents d ON d.id = di.document_id
+       WHERE d.shop_id = ? AND d.doc_type IN ('SALE','REVERSAL')
+         AND d.created_at >= ? AND d.created_at < date(?, '+1 day')`
+    ).bind(auth.shopId, fromTs, toExcl).first(),
+    env.DB.prepare(
+      `SELECT di.name, SUM(di.qty) as qty_sold, SUM(di.line_total) as revenue, SUM(di.gp_amount) as gross_profit
+       FROM document_items di JOIN documents d ON d.id = di.document_id
+       WHERE d.shop_id = ? AND d.doc_type IN ('SALE','REVERSAL')
+         AND d.created_at >= ? AND d.created_at < date(?, '+1 day')
+       GROUP BY di.name ORDER BY revenue DESC LIMIT 20`
+    ).bind(auth.shopId, fromTs, toExcl).all(),
+    env.DB.prepare(
+      `SELECT id, item_code, name, stock_qty, cost_price, unit_price, low_stock_threshold
+       FROM products WHERE shop_id = ? AND active = 1 ORDER BY CAST(item_code AS INTEGER)`
+    ).bind(auth.shopId).all(),
+  ]);
 
-  const gp = await env.DB.prepare(
-    `SELECT COALESCE(SUM(di.gp_amount),0) as gross_profit
-     FROM document_items di JOIN documents d ON d.id = di.document_id
-     WHERE d.shop_id = ? AND d.doc_type IN ('SALE','REVERSAL') AND date(d.created_at) BETWEEN ? AND ?`
-  )
-    .bind(auth.shopId, from, to)
-    .first();
-
-  const { results: topItems } = await env.DB.prepare(
-    `SELECT di.name, SUM(di.qty) as qty_sold, SUM(di.line_total) as revenue, SUM(di.gp_amount) as gross_profit
-     FROM document_items di JOIN documents d ON d.id = di.document_id
-     WHERE d.shop_id = ? AND d.doc_type IN ('SALE','REVERSAL') AND date(d.created_at) BETWEEN ? AND ?
-     GROUP BY di.name ORDER BY revenue DESC LIMIT 20`
-  )
-    .bind(auth.shopId, from, to)
-    .all();
-
-  const { results: stock } = await env.DB.prepare(
-    `SELECT id, item_code, name, stock_qty, cost_price, unit_price, low_stock_threshold FROM products WHERE shop_id = ? AND active = 1 ORDER BY CAST(item_code AS INTEGER)`
-  )
-    .bind(auth.shopId)
-    .all();
+  const topItems = topRes.results || [];
+  const stock = stockRes.results || [];
 
   return json({
     revenue: sales.revenue,
@@ -1634,7 +1638,8 @@ async function handleTransactionReport(request, env, auth, url) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10) || 200, 1000);
   const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
 
-  const conditions = [`d.shop_id = ?`, `date(d.created_at) BETWEEN ? AND ?`];
+  // Range on created_at (not date()) so the (shop_id, created_at) index can be used
+  const conditions = [`d.shop_id = ?`, `d.created_at >= ?`, `d.created_at < date(?, '+1 day')`];
   const params = [auth.shopId, from, to];
 
   if (docType) {
