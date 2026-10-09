@@ -671,8 +671,10 @@
       }
       const main = document.querySelector(".app-main");
       if (main) main.scrollTop = 0;
+      // History / Reports show their last result instantly and only re-fetch when stale or when
+      // something changed (see FRESH_MS / markDataDirty below) — not on every tab tap.
       if (name === "history") loadHistory();
-      if (name === "reports") { loadReports(); loadTransactions(); }
+      if (name === "reports") refreshReports();
     }
 
     // ---------- set password panel (same pattern as admin.html) ----------
@@ -1076,8 +1078,8 @@
         renderPickList(document.getElementById("product-search") && document.getElementById("product-search").value);
         renderProducts();
         const active = document.querySelector(".tab-btn.active");
-        if (active && active.dataset.tab === "history") loadHistory();
-        if (active && active.dataset.tab === "reports") { loadReports(); loadTransactions(); }
+        markDataDirty(); if (active && active.dataset.tab === "history") loadHistory(true);
+        if (active && active.dataset.tab === "reports") refreshReports(true);
         showStatus(statusEl, "Online — data refreshed.", "ok");
       } catch (e) {
         if (e && e.message === "unauthorized") {
@@ -1417,6 +1419,7 @@
 
     // ================= PRODUCTS =================
     async function loadProducts() {
+      markDataDirty(); // every sale/void/stock/product change reloads products → History & Reports re-fetch next visit
       products = await cachedGet("/api/products");
       updateLowStockPill();
       refreshTxItemOptions();
@@ -2043,8 +2046,8 @@
         renderPickList(document.getElementById("product-search").value);
         renderProducts();
         const active = document.querySelector(".tab-btn.active");
-        if (active && active.dataset.tab === "history") loadHistory();
-        if (active && active.dataset.tab === "reports") { loadReports(); loadTransactions(); }
+        markDataDirty(); if (active && active.dataset.tab === "history") loadHistory(true);
+        if (active && active.dataset.tab === "reports") refreshReports(true);
         const left = await pendingCount();
         if (!left.total) {
           showStatus(statusEl, "Synced — everything is up to date.", "ok");
@@ -2073,18 +2076,54 @@
 
     // ================= HISTORY =================
     let historyDocs = []; // last fetched batch, so the search box can filter client-side without refetching
-    document.getElementById("h-apply-btn").addEventListener("click", loadHistory);
+
+    // Freshness: opening History/Reports again within FRESH_MS (and with nothing changed in between)
+    // reuses what's already on screen. Any sale/void/edit/stock/product change calls markDataDirty()
+    // (via loadProducts), and the APPLY / SYNC buttons and reconnects force a re-fetch.
+    const FRESH_MS = 30000;
+    let historyKey = "", historyAt = 0, historyDirty = true, historyReq = 0;
+    let reportsKey = "", reportsAt = 0, reportsDirty = true;
+    function markDataDirty() { historyDirty = true; reportsDirty = true; }
+
+    document.getElementById("h-apply-btn").addEventListener("click", () => loadHistory(true));
     document.getElementById("h-search").addEventListener("input", () => renderHistory(historyDocs));
-    async function loadHistory() {
+    async function loadHistory(force) {
+      force = force === true;
       const body = document.getElementById("history-body");
-      body.innerHTML = '<tr><td colspan="5" class="loading-line">Loading…</td></tr>';
       const from = document.getElementById("h-from").value;
       const to = document.getElementById("h-to").value;
+      const path = `/api/documents?from=${from}&to=${to}&limit=200`;
+
+      // Still fresh and unchanged → no network at all, instant.
+      if (!force && !historyDirty && historyKey === path && Date.now() - historyAt < FRESH_MS) {
+        renderHistory(historyDocs);
+        return;
+      }
+
+      const req = ++historyReq;
+      // Show what we already have straight away (memory, else the device cache), then refresh quietly
+      // behind it — the table is never blanked to "Loading…" when there is something to show.
+      let shown = historyKey === path;
+      if (!shown) {
+        const hit = await cacheGet(path).catch(() => undefined);
+        if (req !== historyReq) return;
+        if (Array.isArray(hit)) { historyDocs = hit; shown = true; }
+      }
+      if (shown) renderHistory(historyDocs);
+      else body.innerHTML = '<tr><td colspan="6" class="loading-line">Loading…</td></tr>';
+
       try {
-        historyDocs = await cachedGet(`/api/documents?from=${from}&to=${to}&limit=200`);
+        const rows = await cachedGet(path);
+        if (req !== historyReq) return; // a newer request (e.g. changed dates) superseded this one
+        historyDocs = rows;
+        historyKey = path;
+        historyAt = Date.now();
+        historyDirty = false;
         renderHistory(historyDocs);
       } catch (e) {
-        body.innerHTML = `<tr><td colspan="6" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        if (req !== historyReq) return;
+        if (!shown) body.innerHTML = `<tr><td colspan="6" class="loading-line">${escapeHtml(e.message)}</td></tr>`;
+        else if (!isNetworkError(e)) showStatus(statusEl, e.message, "err"); // offline with cached rows on screen: stay quiet
       }
     }
     function renderHistory(allDocs) {
@@ -2132,7 +2171,7 @@
       try {
         await apiFetch(`/api/documents/${d.id}/void`, { method: "POST" });
         showStatus(statusEl, `Sale #${d.doc_number} voided.`, "ok");
-        loadHistory();
+        loadHistory(true);
         loadProducts();
       } catch (e) {
         showStatus(statusEl, e.message, "err");
@@ -2140,8 +2179,19 @@
     }
 
     // ================= REPORTS =================
-    document.getElementById("r-apply-btn").addEventListener("click", () => { loadReports(); loadTransactions(); });
-    document.getElementById("tx-apply-btn").addEventListener("click", loadTransactions);
+    function reportsFilterKey() {
+      return ["r-from", "r-to", "tx-item", "tx-group", "tx-type"].map((id) => (document.getElementById(id) || {}).value || "").join("|");
+    }
+    function refreshReports(force) {
+      force = force === true;
+      const key = reportsFilterKey();
+      if (!force && !reportsDirty && key === reportsKey && Date.now() - reportsAt < FRESH_MS) return; // already on screen
+      reportsKey = key; reportsAt = Date.now(); reportsDirty = false;
+      loadReports();
+      loadTransactions();
+    }
+    document.getElementById("r-apply-btn").addEventListener("click", () => refreshReports(true));
+    document.getElementById("tx-apply-btn").addEventListener("click", () => { reportsKey = reportsFilterKey(); reportsAt = Date.now(); loadTransactions(); });
     async function loadReports() {
       const from = document.getElementById("r-from").value;
       const to = document.getElementById("r-to").value;
@@ -2160,7 +2210,8 @@
       const group = document.getElementById("tx-group").value;
       const docType = document.getElementById("tx-type").value;
       const body = document.getElementById("tx-body");
-      body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
+      // keep the previous rows visible while refreshing; only show "Loading…" on an empty table
+      if (!body.querySelector("tr td:not(.loading-line)")) body.innerHTML = '<tr><td colspan="12" class="loading-line">Loading…</td></tr>';
       try {
         let path = `/api/reports/transactions?from=${from}&to=${to}&limit=500`;
         if (productId) path += `&product_id=${encodeURIComponent(productId)}`;
