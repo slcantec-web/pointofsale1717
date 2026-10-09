@@ -272,22 +272,254 @@ function updateConnectionUI(isOnline) {
   }
 }
 
-// Small toast that works on every page.
-function showToast(msg) {
-  if (!document.body) return;
-  let t = document.getElementById("offline-toast");
-  if (!t) {
-    t = document.createElement("div");
-    t.id = "offline-toast";
-    t.setAttribute("role", "status");
-    t.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1a2332;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw;text-align:center;display:none;pointer-events:none;";
-    document.body.appendChild(t);
+// ============================================================
+// Native-style UI layer — replaces browser alert()/confirm()/prompt() and the old
+// toast/banner messages, on every page.
+//   UI.confirm({title, message, confirmText, cancelText, danger}) -> Promise<boolean>
+//   UI.prompt({title, message, label, value, placeholder, required, confirmText}) -> Promise<string|null>
+//   UI.alert({title, message, rows:[{title, sub, tag}], okText, kind}) -> Promise<void>
+//   UI.snack(message, kind = "info"|"ok"|"err"|"warn", {duration})   (snackbar)
+// Phones: bottom sheets that slide up (Android back button / swipe-back closes them).
+// Desktop: centered dialog. Dialogs queue, so two never stack on top of each other.
+// ============================================================
+const UI = (() => {
+  let queue = Promise.resolve();
+  let openCount = 0;
+  let uid = 0;
+  let ignorePop = 0;
+  const stack = []; // open sheets, topmost last: { onBack }
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
   }
-  t.textContent = msg;
-  t.style.display = "block";
-  clearTimeout(t._hide);
-  t._hide = setTimeout(() => { t.style.display = "none"; }, 3200);
-}
+  function normalize(opts, defaults) {
+    if (typeof opts === "string") opts = { message: opts };
+    return Object.assign({}, defaults, opts || {});
+  }
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} }
+
+  // One shared popstate listener: the hardware/gesture Back button closes the top sheet.
+  window.addEventListener("popstate", () => {
+    if (ignorePop > 0) { ignorePop--; return; }
+    const top = stack[stack.length - 1];
+    if (top) top.onBack();
+  });
+
+  // Core: builds the overlay + sheet, calls build(ctx), resolves with whatever finish(value) is given.
+  // ctx = { sheet, finish, setCancel(value), titleId }  — build() returns the element to focus first.
+  function openSheet(build) {
+    const run = () => new Promise((resolve) => {
+      const prevFocus = document.activeElement;
+      const overlay = el("div", "ui-overlay");
+      const sheet = el("div", "ui-sheet");
+      const titleId = "ui-title-" + (++uid);
+      sheet.setAttribute("role", "dialog");
+      sheet.setAttribute("aria-modal", "true");
+      sheet.setAttribute("aria-labelledby", titleId);
+      sheet.appendChild(el("div", "ui-grabber"));
+      overlay.appendChild(sheet);
+
+      let closed = false;
+      let pushed = false;
+      let cancelValue;
+      const entry = { onBack: () => { pushed = false; finish(cancelValue); } };
+
+      function finish(value) {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener("keydown", onKey, true);
+        const i = stack.indexOf(entry);
+        if (i >= 0) stack.splice(i, 1);
+        overlay.classList.remove("show");
+        openCount--;
+        if (!openCount) document.body.classList.remove("ui-sheet-open");
+        if (pushed) { ignorePop++; try { history.back(); } catch (_) { ignorePop--; } }
+        setTimeout(() => overlay.remove(), 220);
+        try { if (prevFocus && prevFocus.focus) prevFocus.focus({ preventScroll: true }); } catch (_) {}
+        resolve(value);
+      }
+
+      function onKey(e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(cancelValue); return; }
+        if (e.key !== "Tab") return;
+        const f = [...sheet.querySelectorAll("button, input, textarea, select, [tabindex]:not([tabindex='-1'])")].filter((x) => !x.disabled && x.offsetParent !== null);
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+
+      const focusEl = build({ sheet, finish, titleId, setCancel: (v) => { cancelValue = v; } });
+
+      overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) finish(cancelValue); });
+      document.addEventListener("keydown", onKey, true);
+      document.body.appendChild(overlay);
+      document.body.classList.add("ui-sheet-open");
+      openCount++;
+      stack.push(entry);
+      try { history.pushState({ posUi: true }, ""); pushed = true; } catch (_) {}
+      requestAnimationFrame(() => {
+        overlay.classList.add("show");
+        try { if (focusEl) focusEl.focus({ preventScroll: true }); } catch (_) {}
+      });
+    });
+    const p = queue.then(run, run);
+    queue = p.catch(() => {});
+    return p;
+  }
+
+  function iconFor(kind) {
+    const map = { danger: "!", warn: "!", ok: "✓", info: "i" };
+    const n = el("div", "ui-icon ui-icon-" + (kind || "info"), map[kind] || "i");
+    n.setAttribute("aria-hidden", "true");
+    return n;
+  }
+
+  function head(ctx, kind, title, message) {
+    ctx.sheet.appendChild(iconFor(kind));
+    ctx.sheet.appendChild(Object.assign(el("h3", "ui-title", title), { id: ctx.titleId }));
+    if (message) ctx.sheet.appendChild(el("p", "ui-msg", message));
+  }
+
+  function confirmDialog(opts) {
+    const o = normalize(opts, { title: "Are you sure?", message: "", confirmText: "OK", cancelText: "Cancel", danger: false });
+    return openSheet((ctx) => {
+      ctx.setCancel(false);
+      head(ctx, o.danger ? "danger" : "warn", o.title, o.message);
+      const actions = el("div", "ui-actions");
+      const cancel = el("button", "ui-btn ui-btn-ghost", o.cancelText);
+      const ok = el("button", "ui-btn " + (o.danger ? "ui-btn-danger" : "ui-btn-primary"), o.confirmText);
+      cancel.type = ok.type = "button";
+      cancel.addEventListener("click", () => ctx.finish(false));
+      ok.addEventListener("click", () => ctx.finish(true));
+      actions.append(cancel, ok);
+      ctx.sheet.appendChild(actions);
+      if (o.danger) buzz(12);
+      return o.danger ? cancel : ok; // destructive actions start on the safe button
+    });
+  }
+
+  function alertDialog(opts) {
+    const o = normalize(opts, { title: "", message: "", rows: null, okText: "OK", kind: "info" });
+    return openSheet((ctx) => {
+      ctx.setCancel(undefined);
+      head(ctx, o.kind, o.title || "Notice", o.message);
+      if (o.rows && o.rows.length) {
+        const list = el("ul", "ui-rows");
+        o.rows.forEach((r) => {
+          const li = el("li", "ui-row");
+          const left = el("div", "ui-row-main");
+          left.appendChild(el("span", "ui-row-title", r.title || ""));
+          if (r.sub) left.appendChild(el("span", "ui-row-sub", r.sub));
+          li.appendChild(left);
+          if (r.tag) li.appendChild(el("span", "ui-row-tag", r.tag));
+          list.appendChild(li);
+        });
+        ctx.sheet.appendChild(list);
+      }
+      const actions = el("div", "ui-actions");
+      const ok = el("button", "ui-btn ui-btn-primary", o.okText);
+      ok.type = "button";
+      ok.addEventListener("click", () => ctx.finish(undefined));
+      actions.appendChild(ok);
+      ctx.sheet.appendChild(actions);
+      return ok;
+    });
+  }
+
+  function promptDialog(opts) {
+    const o = normalize(opts, { title: "", message: "", label: "", value: "", placeholder: "", required: false, confirmText: "OK", cancelText: "Cancel", inputType: "text", maxLength: 500, requiredMessage: "This field is required." });
+    return openSheet((ctx) => {
+      ctx.setCancel(null);
+      head(ctx, "info", o.title || "Enter a value", o.message);
+      const form = el("form", "ui-form");
+      form.noValidate = true;
+      const inputId = "ui-input-" + (++uid);
+      if (o.label) { const l = el("label", "ui-label", o.label); l.htmlFor = inputId; form.appendChild(l); }
+      const input = el("input", "ui-input");
+      input.id = inputId;
+      input.type = o.inputType;
+      input.value = o.value || "";
+      input.placeholder = o.placeholder || "";
+      input.maxLength = o.maxLength;
+      input.autocomplete = "off";
+      input.enterKeyHint = "done";
+      const err = el("p", "ui-error");
+      err.style.display = "none";
+      err.setAttribute("role", "alert");
+      form.append(input, err);
+      const actions = el("div", "ui-actions");
+      const cancel = el("button", "ui-btn ui-btn-ghost", o.cancelText);
+      const ok = el("button", "ui-btn ui-btn-primary", o.confirmText);
+      cancel.type = "button"; ok.type = "submit";
+      cancel.addEventListener("click", () => ctx.finish(null));
+      actions.append(cancel, ok);
+      form.appendChild(actions);
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (o.required && !v) {
+          err.textContent = o.requiredMessage;
+          err.style.display = "block";
+          input.classList.remove("ui-shake"); void input.offsetWidth; input.classList.add("ui-shake");
+          buzz(20);
+          input.focus();
+          return;
+        }
+        ctx.finish(v);
+      });
+      input.addEventListener("input", () => { err.style.display = "none"; });
+      ctx.sheet.appendChild(form);
+      setTimeout(() => { try { input.select(); } catch (_) {} }, 60);
+      return input;
+    });
+  }
+
+  // ---- snackbar (replaces toasts and the sticky status banner inside the app) ----
+  let snackEl = null, snackText = null, snackTimer = null;
+  function hideSnack() {
+    clearTimeout(snackTimer);
+    if (snackEl) snackEl.classList.remove("show");
+  }
+  function snack(message, kind, opts) {
+    if (!document.body || !message) return;
+    kind = kind || "info";
+    opts = opts || {};
+    if (!snackEl) {
+      snackEl = el("div", "ui-snack");
+      snackEl.setAttribute("aria-live", "polite");
+      snackEl.appendChild(el("span", "ui-snack-dot"));
+      snackText = el("span", "ui-snack-text");
+      snackEl.appendChild(snackText);
+      const x = el("button", "ui-snack-x", "✕");
+      x.type = "button";
+      x.setAttribute("aria-label", "Dismiss");
+      snackEl.appendChild(x);
+      snackEl.addEventListener("click", hideSnack);
+      document.body.appendChild(snackEl);
+    }
+    snackEl.className = "ui-snack ui-snack-" + kind;
+    snackEl.setAttribute("role", kind === "err" ? "alert" : "status");
+    snackText.textContent = message;
+    void snackEl.offsetWidth; // restart the slide-in when a new message replaces an old one
+    snackEl.classList.add("show");
+    if (kind === "err") buzz(25);
+    clearTimeout(snackTimer);
+    const ms = opts.duration != null ? opts.duration : (kind === "err" ? 6500 : kind === "warn" ? 5000 : 3200);
+    snackTimer = setTimeout(hideSnack, ms);
+  }
+
+  return { confirm: confirmDialog, alert: alertDialog, prompt: promptDialog, snack, hideSnack };
+})();
+
+// Anything that still calls the browser's alert() gets the in-app sheet instead.
+window.alert = (m) => { UI.alert({ message: String(m == null ? "" : m) }); };
+
+// Kept for older callers (offline.js, connection events).
+function showToast(msg) { UI.snack(msg, "info"); }
 
 Connection.on("change", updateConnectionUI);
 Connection.on("lost", () => showToast("You are offline — sales will save on this device"));
@@ -346,14 +578,17 @@ async function apiFetch(path, options = {}) {
 }
 
 function showStatus(el, message, kind) {
+  // Inside the app screens (dashboard/admin) messages appear as a native-style snackbar
+  // instead of a banner pushed into the page. Login/signup forms keep their inline message,
+  // which is the normal place for form feedback.
+  if (el.closest && el.closest(".app-main")) {
+    el.className = "status";
+    el.textContent = "";
+    UI.snack(message, kind === "err" ? "err" : kind === "ok" ? "ok" : "info");
+    return;
+  }
   el.textContent = message;
   el.className = `status show ${kind}`;
-  clearTimeout(el._hideT);
-  // Auto-clear only inside the app screens (dashboard/admin). Signup/login messages stay.
-  if (el.closest && el.closest(".app-main")) {
-    el._hideT = setTimeout(() => { el.className = "status"; }, kind === "err" ? 7000 : 4000);
-    el.onclick = () => { el.className = "status"; };
-  }
 }
 
 /** Navigate within the app — relative paths work on web and Capacitor WebView. */

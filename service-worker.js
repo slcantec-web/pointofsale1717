@@ -3,7 +3,7 @@
 // 2. Owns the outbound queue: bills created while offline are stored in IndexedDB
 //    by the app, and this worker retries POSTing them whenever connectivity returns.
 
-const CACHE_NAME = "pos-shell-v18"; // bumped: tolerant offline detection
+const CACHE_NAME = "pos-shell-v19"; // bumped: native-style dialogs + snackbar
 const APP_SHELL = [
   "/",
   "/index.html",

@@ -1000,7 +1000,12 @@
         document.getElementById("void-last-btn").style.display = "";
         document.getElementById("print-last-btn").onclick = () => printReceipt(result.documentId);
         document.getElementById("void-last-btn").onclick = async () => {
-          if (!confirm(`Void sale #${result.docNumber}? This reverses the stock and revenue effect.`)) return;
+          if (!(await UI.confirm({
+            title: `Void sale #${result.docNumber}?`,
+            message: "This reverses the stock and revenue effect.",
+            confirmText: "Void sale",
+            danger: true,
+          }))) return;
           try {
             await apiFetch(`/api/documents/${result.documentId}/void`, { method: "POST" });
             showStatus(statusEl, `Sale #${result.docNumber} voided.`, "ok");
@@ -1287,16 +1292,17 @@
     });
 
     async function reprintAsOriginal(docId, docNumber) {
-      const note = prompt(
-        "Reprint Txn #" + docNumber + " as ORIGINAL (paper jam / failed print).\n\nEnter reason (required):",
-        "Paper jam"
-      );
-      if (note === null) return;
-      const reason = String(note).trim();
-      if (!reason) {
-        showStatus(statusEl, "A reason is required to reprint as original.", "err");
-        return;
-      }
+      const reason = await UI.prompt({
+        title: "Reprint as ORIGINAL",
+        message: "Txn #" + docNumber + " — use this for a paper jam or failed print. A reason is required and is saved in the print history.",
+        label: "Reason",
+        value: "Paper jam",
+        placeholder: "e.g. paper jam",
+        required: true,
+        requiredMessage: "A reason is required to reprint as original.",
+        confirmText: "Continue",
+      });
+      if (reason === null) return;
       pendingOriginalReprint = { note: reason };
       try {
         const data = await apiFetch(`/api/documents/${docId}/print`);
@@ -1320,16 +1326,21 @@
       try {
         const rows = await apiFetch(`/api/documents/${docId}/print-history`);
         if (!rows.length) {
-          alert("Txn #" + docNumber + " — no print history yet.");
+          await UI.alert({ title: "No prints yet", message: "Txn #" + docNumber + " has no print history.", kind: "info" });
           return;
         }
         const kindLabel = { original: "ORIGINAL", copy: "COPY", original_reprint: "ORIGINAL (reprint)" };
-        const lines = rows.map((r) =>
-          "#" + r.print_number + "  " + (kindLabel[r.print_kind] || r.print_kind) +
-          "  " + fmtDateShort(r.created_at) +
-          (r.note ? "  — " + r.note : "")
-        );
-        alert("Print history — Txn #" + docNumber + "\n\n" + lines.join("\n"));
+        await UI.alert({
+          title: "Print history",
+          message: "Txn #" + docNumber,
+          kind: "info",
+          rows: rows.map((r) => ({
+            title: "Print #" + r.print_number,
+            sub: fmtDateShort(r.created_at) + (r.note ? " — " + r.note : ""),
+            tag: kindLabel[r.print_kind] || r.print_kind,
+          })),
+          okText: "Close",
+        });
       } catch (e) {
         showStatus(statusEl, e.message, "err");
       }
@@ -1536,7 +1547,12 @@
     }
 
     async function deleteGroup(g) {
-      if (!confirm(`Delete category "${g.name}"? Products using it become uncategorized — nothing else about them changes.`)) return;
+      if (!(await UI.confirm({
+        title: `Delete “${g.name}”?`,
+        message: "Products using this category become uncategorized — nothing else about them changes.",
+        confirmText: "Delete category",
+        danger: true,
+      }))) return;
       try {
         const res = await apiWriteOrQueue({
           path: `/api/item-groups/${g.id}`, method: "DELETE", body: {}, label: "Category delete",
@@ -1982,7 +1998,12 @@
         showStatus(statusEl, `Can't delete "${p.name}" — ${p.stock_qty} still in stock. Deactivate it instead.`, "err");
         return;
       }
-      if (!confirm(`Delete "${p.name}" permanently? Past sales keep their lines. To just hide it, use Deactivate.`)) return;
+      if (!(await UI.confirm({
+        title: `Delete “${p.name}”?`,
+        message: "This is permanent. Past sales keep their lines. To just hide it, use Deactivate instead.",
+        confirmText: "Delete product",
+        danger: true,
+      }))) return;
       try {
         const res = await apiWriteOrQueue({
           path: `/api/products/${p.id}`, method: "DELETE", body: {}, label: "Product delete",
@@ -2029,7 +2050,13 @@
           showStatus(statusEl, "Synced — everything is up to date.", "ok");
         } else {
           showStatus(statusEl, `${left.total} item(s) still unsynced${left.firstError ? ": " + left.firstError : ""}`, "err");
-          if (left.hasError && confirm("Some saved changes keep failing. Discard the failed changes (not sales)?")) {
+          if (left.hasError && await UI.confirm({
+            title: "Discard failed changes?",
+            message: "Some saved changes keep failing to sync. Sales are never discarded — only the failed changes.",
+            confirmText: "Discard",
+            cancelText: "Keep",
+            danger: true,
+          })) {
             await discardFailedWrites();
             showStatus(statusEl, "Failed changes discarded.", "ok");
           }
@@ -2096,7 +2123,12 @@
       });
     }
     async function voidDoc(d) {
-      if (!confirm(`Void sale #${d.doc_number}? This reverses the stock and revenue effect.`)) return;
+      if (!(await UI.confirm({
+        title: `Void sale #${d.doc_number}?`,
+        message: "This reverses the stock and revenue effect.",
+        confirmText: "Void sale",
+        danger: true,
+      }))) return;
       try {
         await apiFetch(`/api/documents/${d.id}/void`, { method: "POST" });
         showStatus(statusEl, `Sale #${d.doc_number} voided.`, "ok");

@@ -244,7 +244,12 @@
       const file = restoreFile.files[0];
       restoreFile.value = "";
       if (!file) return;
-      if (!confirm(`This REPLACES ALL current data (shops, users, products, sales) with the contents of "${file.name}". This cannot be undone. Continue?`)) return;
+      if (!(await UI.confirm({
+        title: "Replace all data?",
+        message: `This REPLACES ALL current data (shops, users, products, sales) with the contents of "${file.name}". This cannot be undone.`,
+        confirmText: "Restore",
+        danger: true,
+      }))) return;
 
       restoreBtn.disabled = true;
       restoreBtn.textContent = "RESTORING...";
@@ -332,7 +337,12 @@
     }
 
     async function act(shop, action, btn) {
-      if (action === "reject" && !confirm(`Reject ${shop.name}? They won't be able to log in.`)) return;
+      if (action === "reject" && !(await UI.confirm({
+        title: `Reject ${shop.name}?`,
+        message: "They won't be able to log in.",
+        confirmText: "Reject",
+        danger: true,
+      }))) return;
       const card = btn.closest(".shop-card");
       card.querySelectorAll("button").forEach((b) => (b.disabled = true));
       btn.textContent = action === "approve" ? "APPROVING…" : "REJECTING…";
@@ -347,8 +357,13 @@
       }
     }
 
-    async function shopAction(shop, action, btn, { confirmMsg, method = "POST" } = {}) {
-      if (confirmMsg && !confirm(confirmMsg)) return;
+    async function shopAction(shop, action, btn, { confirmMsg, confirmTitle, confirmText, danger = false, method = "POST" } = {}) {
+      if (confirmMsg && !(await UI.confirm({
+        title: confirmTitle || "Are you sure?",
+        message: confirmMsg,
+        confirmText: confirmText || "Confirm",
+        danger,
+      }))) return;
       const row = btn.closest(".ledger-row");
       row.querySelectorAll("button").forEach((b) => (b.disabled = true));
       const originalText = btn.textContent;
@@ -460,14 +475,17 @@
                 <button class="btn-sm btn-reject" data-action="delete">DELETE</button>
               </span>
             `;
-            row.querySelector('[data-action="reset-password"]').addEventListener("click", (e) => shopAction(s, "reset-password", e.target, { confirmMsg: `Email a password reset link to ${s.name}'s account?` }));
+            row.querySelector('[data-action="reset-password"]').addEventListener("click", (e) => shopAction(s, "reset-password", e.target, { confirmTitle: "Send reset link?", confirmMsg: `Email a password reset link to ${s.name}'s account?`, confirmText: "Send link" }));
             row.querySelector('[data-action="disable"], [data-action="enable"]')?.addEventListener("click", (e) => {
               const actionName = e.target.dataset.action;
-              shopAction(s, actionName, e.target, actionName === "disable" ? { confirmMsg: `Disable ${s.name}? They won't be able to log in until re-enabled.` } : {});
+              shopAction(s, actionName, e.target, actionName === "disable" ? { confirmTitle: `Disable ${s.name}?`, confirmMsg: "They won't be able to log in until re-enabled.", confirmText: "Disable", danger: true } : {});
             });
             row.querySelector('[data-action="delete"]').addEventListener("click", (e) =>
               shopAction(s, "delete", e.target, {
-                confirmMsg: `Permanently delete ${s.name}? This removes their account, products, and all sales history, and frees up their email to sign up again. This cannot be undone — consider taking a backup first.`,
+                confirmTitle: `Delete ${s.name}?`,
+                confirmMsg: "This permanently removes their account, products, and all sales history, and frees up their email to sign up again. This cannot be undone — consider taking a backup first.",
+                confirmText: "Delete shop",
+                danger: true,
                 method: "DELETE",
               })
             );
@@ -519,7 +537,12 @@
             }
           });
           wrap.querySelector('[data-action="reject"]').addEventListener("click", async (e) => {
-            if (!confirm(`Reject name change to “${r.requested_name}”?`)) return;
+            if (!(await UI.confirm({
+              title: "Reject name change?",
+              message: `The shop keeps its current name instead of “${r.requested_name}”.`,
+              confirmText: "Reject",
+              danger: true,
+            }))) return;
             const btn = e.target;
             btn.disabled = true; btn.textContent = "REJECTING…";
             try {

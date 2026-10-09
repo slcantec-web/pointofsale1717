@@ -1739,3 +1739,138 @@ body.session-locked {
   color: #fff !important;
   border: 2px solid var(--ok) !important;
 }
+
+/* =========================================================
+   NATIVE-STYLE DIALOGS + SNACKBAR  (UI.confirm / UI.prompt / UI.alert / UI.snack in app.js)
+   Phones: bottom sheet. Desktop: centered dialog.
+   ========================================================= */
+body.ui-sheet-open { overflow: hidden; }
+
+.ui-overlay {
+  position: fixed; inset: 0; z-index: 10040;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(18, 24, 43, 0);
+  transition: background 200ms ease;
+}
+.ui-overlay.show { background: rgba(18, 24, 43, 0.55); }
+
+.ui-sheet {
+  position: relative; width: 100%; max-width: 380px; max-height: 88vh; overflow-y: auto;
+  background: var(--paper); border-radius: 22px; padding: 26px 22px 20px; text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  opacity: 0; transform: translateY(14px) scale(0.97);
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease;
+}
+.ui-overlay.show .ui-sheet { opacity: 1; transform: none; }
+.ui-grabber { display: none; }
+
+.ui-icon {
+  width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-size: 24px; font-weight: 800; line-height: 1;
+}
+.ui-icon-info { background: var(--brand-soft); color: var(--brand); }
+.ui-icon-warn { background: var(--tag-soft); color: var(--tag-ink); }
+.ui-icon-danger { background: var(--rust-soft); color: var(--rust); }
+.ui-icon-ok { background: var(--ok-soft); color: var(--ok); }
+
+.ui-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 6px; color: var(--ink); }
+.ui-msg { font-size: 14.5px; font-weight: 500; line-height: 1.5; color: var(--ink-soft); margin: 0 0 18px; white-space: pre-line; overflow-wrap: anywhere; }
+
+.ui-actions { display: flex; gap: 10px; margin-top: 18px; }
+.ui-actions .ui-btn { flex: 1; }
+.ui-btn {
+  border: 1.5px solid transparent; border-radius: var(--r-md); padding: 14px 16px;
+  font-size: 15px; font-weight: 700; cursor: pointer; touch-action: manipulation;
+  transition: background 120ms ease, transform 90ms ease;
+}
+.ui-btn:active { transform: translateY(1px); }
+.ui-btn-primary { background: var(--brand); color: #fff; }
+.ui-btn-primary:hover { background: var(--brand-deep); }
+.ui-btn-danger { background: var(--rust); color: #fff; }
+.ui-btn-danger:hover { background: #B92D3B; }
+.ui-btn-ghost { background: var(--paper-dim); color: var(--ink); border-color: var(--line); }
+.ui-btn-ghost:hover { border-color: var(--ink); }
+
+.ui-form { text-align: left; }
+.ui-label { display: block; font-size: 13px; font-weight: 700; color: var(--ink-soft); margin-bottom: 6px; }
+.ui-input {
+  width: 100%; border: 1.5px solid var(--line); border-radius: var(--r-md); background: var(--paper-dim);
+  font-size: 16px; font-weight: 600; color: var(--ink); padding: 13px 14px; outline: none;
+}
+.ui-input:focus { border-color: var(--brand); background: #fff; box-shadow: 0 0 0 4px rgba(43,75,242,0.14); }
+.ui-error { font-size: 13px; font-weight: 700; color: var(--rust); margin: 8px 0 0; }
+.ui-shake { animation: ui-shake 300ms ease; border-color: var(--rust); }
+@keyframes ui-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+.ui-rows { list-style: none; margin: 0 0 4px; padding: 0; text-align: left; max-height: 42vh; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.ui-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.ui-row:last-child { border-bottom: none; }
+.ui-row-main { display: flex; flex-direction: column; min-width: 0; }
+.ui-row-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.ui-row-sub { font-size: 12px; font-weight: 500; color: var(--ink-soft); overflow-wrap: anywhere; }
+.ui-row-tag { flex: none; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-deep); white-space: nowrap; }
+
+/* snackbar */
+.ui-snack {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 10050;
+  display: flex; align-items: center; gap: 10px; max-width: min(92vw, 460px); min-width: 220px;
+  padding: 12px 8px 12px 16px; border-radius: 14px; cursor: pointer;
+  background: var(--ink); color: #fff; font-size: 14px; font-weight: 600; line-height: 1.35;
+  box-shadow: 0 12px 32px rgba(18, 24, 43, 0.35);
+  opacity: 0; transform: translate(-50%, 24px); pointer-events: none;
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease;
+}
+.ui-snack.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.ui-snack-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--brand-soft); }
+.ui-snack-ok .ui-snack-dot { background: #36D399; }
+.ui-snack-err .ui-snack-dot { background: #FF6B7A; }
+.ui-snack-warn .ui-snack-dot { background: var(--tag); }
+.ui-snack-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ui-snack-x { flex: none; width: 30px; height: 30px; border: none; border-radius: 50%; background: transparent; color: rgba(255,255,255,0.7); font-size: 13px; cursor: pointer; }
+
+/* phones: dialogs become bottom sheets, snackbar floats above the tab bar */
+@media (max-width: 900px) {
+  .ui-overlay { align-items: flex-end; padding: 0; }
+  .ui-sheet {
+    max-width: none; border-radius: 22px 22px 0 0;
+    padding: 10px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(100%); opacity: 1;
+    transition: transform 260ms cubic-bezier(.2,.8,.2,1);
+  }
+  .ui-overlay.show .ui-sheet { transform: none; }
+  .ui-grabber { display: block; width: 38px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto 16px; }
+  .ui-title { font-size: 18px; }
+  .ui-msg { font-size: 14px; }
+  .ui-actions { flex-direction: column-reverse; }
+  .ui-btn { padding: 15px 16px; font-size: 15px; }
+  .ui-input { font-size: 16px; } /* 16px stops iOS/WebView zoom-on-focus */
+  body:has(.app-nav) .ui-snack { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+  .ui-snack { max-width: calc(100vw - 24px); }
+
+  /* existing popups (discount / received amount) get the same bottom-sheet treatment */
+  .modal-overlay { align-items: flex-end; padding: 0; z-index: 10030; }
+  .modal-box {
+    max-width: none; border-radius: 22px 22px 0 0;
+    padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+    animation: ui-sheet-up 260ms cubic-bezier(.2,.8,.2,1);
+  }
+  .modal-box::before { content: ""; display: block; width: 38px; height: 4px; border-radius: 4px; background: var(--line); margin: -6px auto 14px; }
+  .modal-box h3 { font-size: 17px; margin-bottom: 12px; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions .btn-sm { padding: 14px; font-size: 15px; }
+
+  /* receipt share menu becomes an action sheet with a dimmed scrim */
+  .share-menu {
+    position: fixed; left: 10px; right: 10px; top: auto; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    min-width: 0; border-radius: 18px; padding: 8px; z-index: 10020;
+    box-shadow: 0 0 0 100vmax rgba(18, 24, 43, 0.5), 0 16px 40px rgba(18,24,43,0.3);
+    animation: ui-sheet-up 220ms cubic-bezier(.2,.8,.2,1);
+  }
+  .share-menu-item { padding: 15px 14px; font-size: 15px; text-align: center; border-radius: 12px; }
+}
+@keyframes ui-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-sheet, .ui-snack, .ui-overlay, .modal-box, .share-menu { transition: none !important; animation: none !important; }
+}
