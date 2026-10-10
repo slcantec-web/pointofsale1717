@@ -1874,3 +1874,16 @@ body.ui-sheet-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .ui-sheet, .ui-snack, .ui-overlay, .modal-box, .share-menu { transition: none !important; animation: none !important; }
 }
+
+/* Android app download button (login page) */
+.apk-btn {
+  display: flex; align-items: center; justify-content: flex-start; gap: 14px; width: 100%;
+  text-align: left; text-decoration: none; cursor: pointer;
+  background: var(--ink); color: #fff; border-radius: var(--r-md); padding: 14px 18px;
+  transition: background 140ms ease, transform 90ms ease;
+}
+.apk-btn:hover { background: var(--ink-deep); }
+.apk-btn:active { transform: translateY(1px); }
+.apk-ico { flex: none; width: 34px; height: 34px; color: #3DDC84; } /* Android green */
+.apk-text { display: flex; flex-direction: column; min-width: 0; font-size: 17px; font-weight: 800; line-height: 1.2; }
+.apk-text small { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.7); margin-top: 3px; }
