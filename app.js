@@ -676,7 +676,7 @@ const APP_RELEASE_REPO = "slcantec-web/pointofsale1717";
 const APP_APK_URL = `https://github.com/${APP_RELEASE_REPO}/releases/latest/download/pos.apk`;
 
 const AppUpdate = (() => {
-  const CHECK_EVERY_MS = 6 * 60 * 60 * 1000; // at most one check per 6h
+  const CHECK_EVERY_MS = 10 * 60 * 1000; // at most one check per 10 min (GitHub allows 60/h per IP)
   const REMIND_AFTER_MS = 24 * 60 * 60 * 1000; // after "Later", ask again for the same version after a day
 
   function cmp(a, b) { // semantic version compare, "1.2.3" style
@@ -710,8 +710,8 @@ const AppUpdate = (() => {
     if (!IS_NATIVE_APP) return;
     try {
       if (!force && Date.now() - parseInt(localStorage.getItem("pos_upd_checked") || "0", 10) < CHECK_EVERY_MS) return;
-      localStorage.setItem("pos_upd_checked", String(Date.now()));
       const [cur, rel] = await Promise.all([installedVersion(), latest()]);
+      localStorage.setItem("pos_upd_checked", String(Date.now())); // only after a successful lookup, so a failed check retries soon
       if (!cur || !rel.version || cmp(rel.version, cur) <= 0) return;
       const snoozed = localStorage.getItem("pos_upd_snooze"); // "version|time"
       if (!force && snoozed) {

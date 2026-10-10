@@ -29,7 +29,7 @@ Versions must increase (`1.0.1` → `1.0.2` → `1.1.0`); the Android versionCod
 
 ## What users see
 - **Login page (browser):** "Download Android app (v1.0.1)" → always the newest `pos.apk`. Hidden inside the app itself.
-- **Installed app:** on launch and when reopened (at most every 6h) it checks the newest release; if it is newer, a sheet says "Update available" → *Download update* opens the APK, tap it to install over the old app. *Later* asks again after 24h.
+- **Installed app:** on launch and when reopened (at most every 10 min) it checks the newest release; if it is newer, a sheet says "Update available" → *Download update* opens the APK, tap it to install over the old app. *Later* asks again after 24h.
 - First install: allow "install unknown apps" for the browser.
 
 ## Notes
