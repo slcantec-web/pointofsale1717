@@ -3,7 +3,7 @@
 // 2. Owns the outbound queue: bills created while offline are stored in IndexedDB
 //    by the app, and this worker retries POSTing them whenever connectivity returns.
 
-const CACHE_NAME = "pos-shell-v21"; // bumped: APK download link + update prompt
+const CACHE_NAME = "pos-shell-v22"; // bumped: APK download link + update prompt
 const APP_SHELL = [
   "/",
   "/index.html",

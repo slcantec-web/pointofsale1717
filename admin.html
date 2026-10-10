@@ -22,7 +22,7 @@
         <button type="button" class="nav-tab-btn tab-btn" data-tab="name-requests" data-title="Name requests" data-sub="Shop name change requests">Name requests</button>
         <button type="button" class="nav-tab-btn tab-btn" data-tab="shops" data-title="All shops" data-sub="Directory, access and data">Shops</button>
       </div>
-      <div class="nav-foot">POS · admin console</div>
+      <div class="nav-foot">POS · admin console <span id="app-version"></span></div>
     </nav>
 
     <header class="app-header">
@@ -567,6 +567,8 @@
         if (btn.dataset.tab === "name-requests") loadNameRequests();
       });
     });
+
+    AppUpdate.versionLabel().then((v) => { document.getElementById("app-version").textContent = v ? "· " + v : ""; });
 
     loadAdminSettings();
     loadShops();

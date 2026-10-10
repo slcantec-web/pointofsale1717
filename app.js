@@ -744,6 +744,25 @@ const AppUpdate = (() => {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(false); });
   }
 
-  return { check, start, fillDownloadLink, cmp };
+  // Text for "version" labels: the installed APK version, or "web" in a browser.
+  async function versionLabel() {
+    if (!IS_NATIVE_APP) return "web version";
+    const v = await installedVersion();
+    return v ? "v" + v : "";
+  }
+
+  // Manual check (Settings button): always reports back, and ignores the "Later" snooze.
+  async function checkNow() {
+    if (!IS_NATIVE_APP) { UI.snack("Updates apply to the Android app. The web version is always current.", "info"); return; }
+    try {
+      const [cur, rel] = await Promise.all([installedVersion(), latest()]);
+      if (!cur || !rel.version) throw new Error("no version");
+      if (cmp(rel.version, cur) <= 0) { UI.snack(`You're on the latest version (v${cur}).`, "ok"); return; }
+      localStorage.removeItem("pos_upd_snooze");
+      await check(true);
+    } catch (_) { UI.snack("Couldn't check for updates — check your connection.", "err"); }
+  }
+
+  return { check, checkNow, start, fillDownloadLink, cmp, versionLabel };
 })();
 AppUpdate.start();

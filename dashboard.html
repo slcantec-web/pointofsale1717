@@ -24,7 +24,7 @@
         <button class="nav-tab-btn tab-btn" data-tab="reports" data-title="Reports" data-sub="Revenue, profit and stock levels">Reports</button>
         <button class="nav-tab-btn tab-btn" data-tab="settings" data-title="Settings" data-sub="Shop details and receipt setup">Settings</button>
       </div>
-      <div class="nav-foot">POS · shop till</div>
+      <div class="nav-foot">POS · shop till <span id="app-version"></span></div>
     </nav>
 
     <header class="app-header">
@@ -377,6 +377,16 @@
               <tr><td colspan="5" class="shop-card-meta">Load the log to view transactions.</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-block-head">
+          <p class="section-title" style="padding-top:0; border-top:none; margin:0;">About this app</p>
+        </div>
+        <p class="shop-card-meta" style="margin:0 0 12px;">Version: <strong id="about-version">…</strong></p>
+        <div class="account-actions">
+          <button type="button" class="btn-sm btn-ghost" id="check-update-btn">CHECK FOR UPDATES</button>
         </div>
       </div>
 
@@ -2451,6 +2461,12 @@
         tbody.innerHTML = '<tr><td colspan="5" class="loading-line">' + escapeHtml(err.message) + "</td></tr>";
       }
     }
+
+    AppUpdate.versionLabel().then((v) => {
+      document.getElementById("about-version").textContent = v || "unknown";
+      document.getElementById("app-version").textContent = v ? "· " + v : "";
+    });
+    document.getElementById("check-update-btn").addEventListener("click", () => AppUpdate.checkNow());
 
     init();
   </script>
