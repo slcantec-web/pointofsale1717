@@ -50,6 +50,10 @@
     <p class="foot-line">
       New shop? <a href="/signup.html" class="btn-link">Sign up here</a>
     </p>
+
+    <p class="foot-line" id="apk-line" style="display:none;">
+      <a id="apk-link" class="btn-link" href="#" rel="noopener"><span id="apk-label">Download Android app</span></a>
+    </p>
   </div>
     </div>
   </div>
@@ -63,6 +67,12 @@
       window.location.href = Auth.role === "super_admin" ? "admin.html" : "dashboard.html";
     } else if (Auth.isLoggedIn() && Auth.isSessionExpired()) {
       Auth.clear();
+    }
+
+    // Download link for the Android app (hidden inside the app itself); always points at the newest release.
+    if (!IS_NATIVE_APP) {
+      document.getElementById("apk-line").style.display = "";
+      AppUpdate.fillDownloadLink(document.getElementById("apk-link"), document.getElementById("apk-label"));
     }
 
     const passwordForm = document.getElementById("password-form");

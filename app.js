@@ -666,3 +666,84 @@ if ("serviceWorker" in navigator && !IS_NATIVE_APP) {
     navigator.serviceWorker.register("/service-worker.js").catch(() => {});
   });
 }
+
+// ============================================================
+// App updates — the APK is released via GitHub Releases (tag vX.Y.Z -> pos.apk).
+//  - Login page: shows a "download the app" link to the newest release.
+//  - Installed Android app: checks the newest release on launch / when reopened and offers to install it.
+// ============================================================
+const APP_RELEASE_REPO = "slcantec-web/pointofsale1717";
+const APP_APK_URL = `https://github.com/${APP_RELEASE_REPO}/releases/latest/download/pos.apk`;
+
+const AppUpdate = (() => {
+  const CHECK_EVERY_MS = 6 * 60 * 60 * 1000; // at most one check per 6h
+  const REMIND_AFTER_MS = 24 * 60 * 60 * 1000; // after "Later", ask again for the same version after a day
+
+  function cmp(a, b) { // semantic version compare, "1.2.3" style
+    const pa = String(a).replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
+    const pb = String(b).replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
+    for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0); }
+    return 0;
+  }
+
+  async function latest() {
+    const r = await fetch(`https://api.github.com/repos/${APP_RELEASE_REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
+    if (!r.ok) throw new Error("release lookup failed");
+    const j = await r.json();
+    const apk = (j.assets || []).find((a) => /\.apk$/i.test(a.name));
+    return { version: String(j.tag_name || "").replace(/^v/, ""), url: apk ? apk.browser_download_url : APP_APK_URL, notes: (j.body || "").trim() };
+  }
+
+  async function installedVersion() {
+    const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (!App || !App.getInfo) return null;
+    try { return (await App.getInfo()).version; } catch (_) { return null; }
+  }
+
+  function openUrl(url) {
+    const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+    if (B && B.open) B.open({ url }).catch(() => { window.location.href = url; });
+    else window.open(url, "_system");
+  }
+
+  async function check(force) {
+    if (!IS_NATIVE_APP) return;
+    try {
+      if (!force && Date.now() - parseInt(localStorage.getItem("pos_upd_checked") || "0", 10) < CHECK_EVERY_MS) return;
+      localStorage.setItem("pos_upd_checked", String(Date.now()));
+      const [cur, rel] = await Promise.all([installedVersion(), latest()]);
+      if (!cur || !rel.version || cmp(rel.version, cur) <= 0) return;
+      const snoozed = localStorage.getItem("pos_upd_snooze"); // "version|time"
+      if (!force && snoozed) {
+        const [v, t] = snoozed.split("|");
+        if (v === rel.version && Date.now() - parseInt(t, 10) < REMIND_AFTER_MS) return;
+      }
+      const yes = await UI.confirm({
+        title: `Update available — v${rel.version}`,
+        message: `You have v${cur}. Download the new version and tap the file to install it — your data stays on the device and in your account.` + (rel.notes ? `\n\n${rel.notes.slice(0, 300)}` : ""),
+        confirmText: "Download update",
+        cancelText: "Later",
+      });
+      if (yes) openUrl(rel.url);
+      else localStorage.setItem("pos_upd_snooze", `${rel.version}|${Date.now()}`);
+    } catch (_) { /* offline or GitHub unreachable: try again next time */ }
+  }
+
+  // Login page: fill in the download link with the newest version number.
+  async function fillDownloadLink(linkEl, labelEl) {
+    linkEl.href = APP_APK_URL;
+    try {
+      const rel = await latest();
+      if (rel.version) { labelEl.textContent = `Download Android app (v${rel.version})`; linkEl.href = rel.url; }
+    } catch (_) { /* keep the generic link */ }
+  }
+
+  function start() {
+    if (!IS_NATIVE_APP) return;
+    setTimeout(() => check(false), 4000);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(false); });
+  }
+
+  return { check, start, fillDownloadLink, cmp };
+})();
+AppUpdate.start();
