@@ -1887,3 +1887,4 @@ body.ui-sheet-open { overflow: hidden; }
 .apk-ico { flex: none; width: 34px; height: 34px; color: #3DDC84; } /* Android green */
 .apk-text { display: flex; flex-direction: column; min-width: 0; font-size: 17px; font-weight: 800; line-height: 1.2; }
 .apk-text small { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.7); margin-top: 3px; }
+#apk-line { margin-top: 18px; }
